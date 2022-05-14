@@ -28,15 +28,15 @@ timeStep *= ((MASS * SIGMA ** 2) / EPSILON) ** .5
 
 def main():
     atomList = []
-    dx = SIGMA  # Distance between atoms in one dimension
+    # Sigma is the distance between atoms in one dimension
     #for i in range(n):
     #    for j in range(n):
     #        for k in range(n):
-    #            atom = Atom(i * dx, j * dx, k * dx)
+    #            atom = Atom(i * SIGMA, j * SIGMA, k * SIGMA)
     #            atomList.append(atom)
     atomList.append(Atom(0, 0, 0))
 
-    atomList.append(Atom(dx, 0, 0))
+    atomList.append(Atom(SIGMA, 0, 0))
 
     text_file = open("out.xyz", "w")
     energyFile = open("Energy.txt", "w")
@@ -140,14 +140,14 @@ def calcForces(atomList, energyFile):
     for i in range(len(atomList)):
         for j in range(len(atomList)):
             if i != j:
-                dx = np.zeros(3)  # Position of an atom relative to another atom
-                dx = atomList[i].positions - atomList[j].positions
+                distArr = np.zeros(3)  # Position of an atom relative to another atom
+                distArr = atomList[i].positions - atomList[j].positions
                 # Calculates distance through walls if it is nearer than through
                 # the middle of the box
-                dx = dx - L * np.round(dx / L)
-                dot = np.dot(dx)
+                distArr = distArr - L * np.round(distArr / L)
+                dot = np.dot(distArr)
                 r = np.sqrt(dot)  # Vector magnitude
-                dx /= r  # Find unit direction of force
+                distArr /= r  # Find unit direction of force
 
                 netPotential += 4 * EPS * ((SIGMA / r) ** 12 - (SIGMA
                                                                 / r) ** 6)
@@ -159,7 +159,7 @@ def calcForces(atomList, energyFile):
                 energyFile.write("{} on {}: {} \n".format(i, j, force))
                 # energyFile.write("----------------- \n")
                 for k in range(3):
-                    atomList[i].accelerations[k] += (force * dx[k] /
+                    atomList[i].accelerations[k] += (force * distArr[k] /
                                                      MASS)
 
     return netPotential
