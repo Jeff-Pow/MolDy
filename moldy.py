@@ -9,7 +9,8 @@ numTimeSteps = 1000  # Parameters to change for simulation
 n = 4
 timeStep = .01
 
-N = n ** 3
+# N = n ** 3
+N = 2
 SIGMA = 3.405  # Angstroms
 EPSILON = 1.6540 * 10 ** -21  # Kelvin
 EPS = EPSILON / (1.38 * 10 ** -23)
@@ -93,8 +94,8 @@ def main():
 
         netVelocity = np.zeros(3)
 
-        #if i < numtimesteps / 2 and i != 0 and i % 5 == 0:
-        #    gaussianvelocities(atomlist, target_temp)
+        #if i < numTimeSteps / 2 and i != 0 and i % 5 == 0:
+        #    gaussianVelocities(atomList, TARGET_TEMP)
 
         for j in range(len(atomList)):  # update velocities
             atomList[j].velocities += (.5 * (atomList[j].accelerations + atomList[j].oldAccelerations)) * timeStep
@@ -120,15 +121,15 @@ def main():
 def gaussianVelocities(atomList, targetTemp):
     instantTemp = 0
     for i in range(len(atomList)):
-        dot = np.zeros(3)  # Dot product of velocity vectors of each atom
-        dot = np.dot(atomList[i].velocities, atomList[i].velocities)
+        # Dot product of velocity vectors
+        dot = np.dot(atomList[i].velocities, atomList[i].velocities) / N
         instantTemp += MASS * dot
 
     instantTemp /= (3 * len(atomList) - 3)
+    instantTemp = np.sqrt(instantTemp)
 
     for i in range(len(atomList)):  # V = lambda * V
-        for j in range(3):
-            atomList[i].velocities[j] *= np.sqrt(targetTemp / instantTemp)
+        atomList[i].velocities *= instantTemp
 
 
 def calcForces(atomList, energyFile):
@@ -142,11 +143,16 @@ def calcForces(atomList, energyFile):
             if i != j:
                 distArr = np.zeros(3)  # Position of an atom relative to another atom
                 distArr = atomList[i].positions - atomList[j].positions
-                # Calculates distance through walls if it is nearer than through
-                # the middle of the box
+                # Boundary conditions - Interact through walls if closer
                 distArr = distArr - L * np.round(distArr / L)
+                for k in range(3):
+                    while distArr[k] >= .5 * L:
+                        distArr[k] -= L
+                    while distArr[k] < -.5 * L:
+                        distArr[k] += L
+
                 dot = np.dot(distArr, distArr)
-                r = np.sqrt(dot)  # Vector magnitude
+                r = np.sqrt(dot)  # Distance vector magnitude
                 distArr /= r  # Find unit direction of force
 
                 netPotential += 4 * EPS * ((SIGMA / r) ** 12 - (SIGMA
@@ -158,9 +164,8 @@ def calcForces(atomList, energyFile):
 
                 energyFile.write("{} on {}: {} \n".format(i, j, force))
                 # energyFile.write("----------------- \n")
-                for k in range(3):
-                    atomList[i].accelerations[k] += (force * distArr[k] /
-                                                     MASS)
+                #for k in range(3):
+                atomList[i].accelerations += (force * distArr / MASS)
 
     return netPotential
 

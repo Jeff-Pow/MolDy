@@ -580,9 +580,9 @@ double meanSquaredVelocity()
 void thermostat()
 {
 	int i,j;
-        double vScale;
+    double vScale;
 	double v2 = 0.0;
-        double instant_temp = 0.0;
+    double instant_temp = 0.0;
 
 	for(i=0;i<N;i++)
 		for(j=0;j<3;j++)
