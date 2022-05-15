@@ -23,7 +23,7 @@ TARGET_TEMP = 1.24 * EPS
 cutoff = 2.5 * SIGMA  # Kelvin
 # MASS = 39.9 * 10 / 6.022169 / 1.380662
 MASS = 48.07
-timeStep *= ((MASS * SIGMA ** 2) / EPSILON) ** .5
+#timeStep *= (EPSILON / (MASS * SIGMA ** 2)) ** .5
 
 
 def main():
@@ -75,41 +75,42 @@ def main():
                                                 atomList[j].positions[1],
                                                 atomList[j].positions[2])))
 
-        for j in range(len(atomList)):  # Find new position
-            atomList[j].positions = atomList[j].positions + atomList[j].velocities * timeStep + .5 * atomList[j].accelerations * timeStep ** 2
-            atomList[j].oldAccelerations = atomList[j].accelerations
+        for j in range(len(atomList)): # Find new position
+            for k in range(3):
+                atomList[j].positions[k] += atomList[j].velocities[k] * timeStep + .5 * atomList[j].accelerations[k] * timeStep ** 2
+                atomList[j].oldAccelerations[k] = atomList[j].accelerations[k]
 
 
         for j in range(len(atomList)):  # Boundaries of simulation
             for k in range(3):
-                while atomList[j].positions[k] > L:
+                if atomList[j].positions[k] > L:
                     atomList[j].positions[k] -= L
 
-                while atomList[j].positions[k] < 0:
+                if atomList[j].positions[k] < 0:
                     atomList[j].positions[k] += L
 
         calcForces(atomList, energyFile)  # Update accelerations
 
         netVelocity = np.zeros(3)
 
-        if i < numTimeSteps / 2 and i != 0 and i % 5 == 0:
-            gaussianVelocities(atomList, TARGET_TEMP)
+        #if i < numtimesteps / 2 and i != 0 and i % 5 == 0:
+        #    gaussianvelocities(atomlist, target_temp)
 
-        for j in range(len(atomList)):  # Update velocities
-            atomList[j].velocities += (.5 * (atomList.accelerations + atomList[j].oldAccelerations)) * timeStep
+        for j in range(len(atomList)):  # update velocities
+            atomList[j].velocities += (.5 * (atomList[j].accelerations + atomList[j].oldAccelerations)) * timeStep
             netVelocity += atomList[j].velocities
 
-        # if i > numTimeSteps / 2:
-        # energyFile.write("Time: {} \n".format(i))
+        # if i > numtimesteps / 2:
+        # energyfile.write("time: {} \n".format(i))
 
-        # v = np.dot(netVelocity, netVelocity)
+        # v = np.dot(netvelocity, netvelocity)
 
-        # netKE = (.5 * MASS * v)
-        # energyFile.write("KE: {} \n".format(netKE))
+        # netke = (.5 * mass * v)
+        # energyfile.write("ke: {} \n".format(netke))
 
-        # energyFile.write("PE: {} \n".format(netPotential))
-        # energyFile.write("Total energy: {} \n".format(netPotential +
-        # netKE))
+        # energyfile.write("pe: {} \n".format(netpotential))
+        # energyfile.write("total energy: {} \n".format(netpotential +
+        # netke))
         energyFile.write("------------------------------------ \n")
 
     text_file.close()
@@ -119,9 +120,8 @@ def main():
 def gaussianVelocities(atomList, targetTemp):
     instantTemp = 0
     for i in range(len(atomList)):
-        dot = 0  # Dot product of velocity vectors of each atom
-        for j in range(3):
-            dot += atomList[i].velocities[j] * atomList[i].velocities[j]
+        dot = np.zeros(3)  # Dot product of velocity vectors of each atom
+        dot = np.dot(atomList[i].velocities, atomList[i].velocities)
         instantTemp += MASS * dot
 
     instantTemp /= (3 * len(atomList) - 3)
@@ -145,7 +145,7 @@ def calcForces(atomList, energyFile):
                 # Calculates distance through walls if it is nearer than through
                 # the middle of the box
                 distArr = distArr - L * np.round(distArr / L)
-                dot = np.dot(distArr)
+                dot = np.dot(distArr, distArr)
                 r = np.sqrt(dot)  # Vector magnitude
                 distArr /= r  # Find unit direction of force
 
@@ -168,8 +168,8 @@ def calcForces(atomList, energyFile):
 class Atom:
     def __init__(self, positionX, positionY, positionZ):
         self.positions = np.array([positionX, positionY, positionZ])
-        self.velocities = np.random.normal(size=3)
-        # self.velocities = np.zeros(3)
+        #self.velocities = np.random.normal(size=3)
+        self.velocities = np.zeros(3)
         self.accelerations = np.zeros(3)
         self.oldAccelerations = np.zeros(3)
 
