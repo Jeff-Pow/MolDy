@@ -82,13 +82,13 @@ def main():
                 atomList[j].oldAccelerations[k] = atomList[j].accelerations[k]
 
 
-        for j in range(len(atomList)):  # Boundaries of simulation
-            for k in range(3):
-                if atomList[j].positions[k] > L:
-                    atomList[j].positions[k] -= L
-
-                if atomList[j].positions[k] < 0:
-                    atomList[j].positions[k] += L
+        #for j in range(len(atomList)):  # Boundaries of simulation
+        #    for k in range(3):
+        #        if atomList[j].positions[k] > L:
+        #            atomList[j].positions[k] -= L
+#
+#                if atomList[j].positions[k] < 0:
+#                    atomList[j].positions[k] += L
 
         calcForces(atomList, energyFile)  # Update accelerations
 
@@ -155,12 +155,9 @@ def calcForces(atomList, energyFile):
                 r = np.sqrt(dot)  # Distance vector magnitude
                 distArr /= r  # Find unit direction of force
 
-                netPotential += 4 * EPS * ((SIGMA / r) ** 12 - (SIGMA
-                                                                / r) ** 6)
+                netPotential += 4 * EPS * ((SIGMA / r) ** 12 - (SIGMA / r) ** 6)
 
-                force = 24 * EPS / dot * (2 * (SIGMA / dot) ** 12 - (
-                        SIGMA
-                        / dot) ** 6)
+                force = 24 * EPS / dot * (2 * (SIGMA / dot) ** 12 - (SIGMA / dot) ** 6)
 
                 energyFile.write("{} on {}: {} \n".format(i, j, force))
                 # energyFile.write("----------------- \n")
