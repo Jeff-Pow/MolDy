@@ -247,17 +247,18 @@ int main()
 
 	return(0);
 }
-/*
-// *** UNCOMMENT FOR SIMPLE CUBIC *** //
+
+//  UNCOMMENT FOR SIMPLE CUBIC
 void crystalLattice()
 {
 	int i,j,k,n;
 
 	//Number of atoms in each x,y,z direction rounded up to the nearest whole number
-	n = ceil(pow(N,1.0/3.0));
+	// n = ceil(pow(N,1.0/3.0));
+    n = 27;
 
 	//Atom spacing in given x,y,z direction
-	double dr = L / n;
+	double dr = s;
 
 	//Index for total number of atoms, N
 	int index = 0;
@@ -282,7 +283,8 @@ void crystalLattice()
 //		printf("%lf\t %lf\t %lf\n",v[i][0],v[i][1],v[i][2]);
 
 }
-*/
+
+/*
 void crystalLattice()
 {
 	int i,j,k;
@@ -320,7 +322,7 @@ void crystalLattice()
 					r[index][2] = k * dr + dr2;
 				}
 				index++;
-	
+
 				if(index < N)
 				{
 					r[index][0] = i * dr + dr2;
@@ -335,6 +337,7 @@ void crystalLattice()
 //        for(i=0;i<N;i++)
 //        	printf("%lf\t %lf\t %lf\n",r[i][0],r[i][1],r[i][2]);
 }
+*/
 
 void wrapToBox()
 {

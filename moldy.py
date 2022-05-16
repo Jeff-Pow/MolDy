@@ -3,21 +3,20 @@ import numpy as np
 kB = 1.38064852e-23 # J / K
 Na = 6.022e-23 # Atoms per mol
 
-numTimeSteps = 5000  # Parameters to change for simulation
+numTimeSteps = 10000  # Parameters to change for simulation
 n = 3
 timeStep = .001 # dt_star
 
 N = n ** 3
 SIGMA = 3.405  # Angstroms
 EPSILON = 1.6540e-21  # Joules
-EPS_STAR = EPSILON / kB # ~120 Kelvin
+EPS_STAR = EPSILON / kB # ~119.8 Kelvin
 
 rhostar = .8  # Dimensionless density of gas
 rho = rhostar / (SIGMA ** 3)  # density
 L = ((N / rho) ** (1 / 3))  # unit cell length
 rCutoff = L / 2
-TARGET_TEMP = 1.24 * EPS_STAR
-cutoff = 2.5 * SIGMA  # Kelvin
+TARGET_TEMP = 1.1 * EPS_STAR
 MASS = 39.9 * 10 / 6.022169 / 1.380662
 # MASS = 48.07 / Na # ???
 MASS_amu = 39.9 # amu
@@ -99,16 +98,20 @@ def main():
 
 def thermostat(atomList, targetTemp):
     instantTemp = 0
+    dot = 0
     for atom in atomList:
         # Dot product of velocity vectors
-        dot = np.dot(atom.velocities, atom.velocities)
-        instantTemp += MASS * dot
-    instantTemp = instantTemp
-    instantTemp /= (3 * len(atomList) - 3)
-    instantTemp = np.sqrt(targetTemp / instantTemp)
+        # dot += np.dot(atom.velocities, atom.velocities) / N
+        instantTemp += MASS * np.dot(atom.velocities, atom.velocities)
+
+    # for atom in atomList:
+    #     instantTemp += MASS * dot
+
+    instantTemp /= (3 * N - 3)
+    tempScalar = np.sqrt(targetTemp / instantTemp)
 
     for atom in atomList:  # V = lambda * V
-        atom.velocities *= instantTemp
+        atom.velocities *= tempScalar
 
 
 def calcForces(atomList, energyFile):
@@ -128,6 +131,7 @@ def calcForces(atomList, energyFile):
                     distArr[k] -= L
                 while distArr[k] < -.5 * L:
                    distArr[k] += L
+            # TODO: above loop modifies values
 
             dot = np.dot(distArr, distArr)
             r = np.sqrt(dot)  # Distance vector magnitude
