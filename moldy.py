@@ -67,7 +67,7 @@ def main():
 
         calcForces(atomList, energyFile)  # Update accelerations
 
-        netVelocity = np.zeros(3)
+        netVelocity = np.zeros(3) #
 
         if False and i < numTimeSteps / 2. and i != 0. and i % 5. == 0.:
             gaussianVelocities(atomList, TARGET_TEMP)
