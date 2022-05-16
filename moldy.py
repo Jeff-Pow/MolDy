@@ -1,31 +1,32 @@
-import math
 import numpy as np
-import random
 
-kB = 1.38064852 * 10 ** -23
-Na = 6.022 * 10 ** -23
+kB = 1.38064852e-23 # J / K
+Na = 6.022e-23 # Atoms per mol
 
 numTimeSteps = 1000  # Parameters to change for simulation
 n = 4
-timeStep = .01
+timeStep = .001 # dt_star
 
 # N = n ** 3
 N = 2
 SIGMA = 3.405  # Angstroms
-EPSILON = 1.6540 * 10 ** -21  # Kelvin
-EPS = EPSILON / (1.38 * 10 ** -23)
+EPSILON = 1.6540e-21  # Joules
+EPS_STAR = EPSILON / kB # ~120 Kelvin
 
 rhostar = .6  # Dimensionless density of gas
-
 rho = rhostar / (SIGMA ** 3)  # density
 L = ((N / rho) ** (1 / 3))  # unit cell length
 rCutoff = L / 2
-TARGET_TEMP = 1.24 * EPS
+TARGET_TEMP = 1.24 * EPS_STAR
 cutoff = 2.5 * SIGMA  # Kelvin
 # MASS = 39.9 * 10 / 6.022169 / 1.380662
-MASS = 48.07
-#timeStep *= (EPSILON / (MASS * SIGMA ** 2)) ** .5
-
+# MASS = 48.07 / Na # ???
+MASS_amu = 39.9 # amu
+MASS_kg = MASS_amu * 1.660539e-27 # kg
+# MASS = 6.63588 * 10 ** -26 # kg / atom
+# MASS = 6.63588 * 10 ** -23 # g / atom
+# timeStep *= np.sqrt((MASS * SIGMA ** 2) / EPS_STAR) # Picoseconds ???
+#timeStep *= 1e-12 # picoseconds
 
 def main():
     atomList = []
@@ -35,9 +36,9 @@ def main():
     #        for k in range(n):
     #            atom = Atom(i * SIGMA, j * SIGMA, k * SIGMA)
     #            atomList.append(atom)
-    atomList.append(Atom(0, 0, 0))
+    atomList.append(Atom(0., 0., 0.))
 
-    atomList.append(Atom(SIGMA, 0, 0))
+    atomList.append(Atom(SIGMA/2, 0., 0.))
 
     text_file = open("out.xyz", "w")
     energyFile = open("Energy.txt", "w")
@@ -47,55 +48,29 @@ def main():
         text_file.write("%i \n \n" % len(atomList))
         energyFile.write("Time: {} \n".format(i))
 
-        for j in range(len(atomList)):  # Print locations of all molecules
+        for atom in atomList:  # Print locations of all molecules
 
-            energyFile.write("Positions: %f %f %f \n" % (atomList[
-                                                             j].positions[0],
-                                                         atomList[j].positions[
-                                                             1],
-                                                         atomList[j].positions[
-                                                             2]))
-            energyFile.write("Velocities: %f %f %f \n" % (atomList[
-                                                              j].velocities[0],
-                                                          atomList[
-                                                              j].velocities[
-                                                              1],
-                                                          atomList[
-                                                              j].velocities[
-                                                              2]))
-            energyFile.write("Accelerations: %f %f %f \n - \n" % (atomList[
-                                                                      j].accelerations[
-                                                                      0],
-                                                                  atomList[
-                                                                      j].accelerations[
-                                                                      1],
-                                                                  atomList[
-                                                                      j].accelerations[
-                                                                      2]))
-            text_file.write(("A %f %f %f \n" % (atomList[j].positions[0],
-                                                atomList[j].positions[1],
-                                                atomList[j].positions[2])))
+            energyFile.write("Positions: %f %f %f\n" % tuple(atom.positions))
+            energyFile.write("Velocities: %f %f %f\n" % tuple(atom.velocities))
+            energyFile.write("Accelerations: %f %f %f\n - \n" % tuple(atom.accelerations))
+            text_file.write("A %f %f %f\n" % tuple(atom.positions))
 
-        for j in range(len(atomList)): # Find new position
+        for atom in atomList: # Find new position
             for k in range(3):
-                atomList[j].positions[k] += atomList[j].velocities[k] * timeStep + .5 * atomList[j].accelerations[k] * timeStep ** 2
-                atomList[j].oldAccelerations[k] = atomList[j].accelerations[k]
+                atom.positions[k] += atom.velocities[k] * timeStep + .5 * atom.accelerations[k] * timeStep ** 2
+                atom.oldAccelerations[k] = atom.accelerations[k]
 
 
-        #for j in range(len(atomList)):  # Boundaries of simulation
-        #    for k in range(3):
-        #        if atomList[j].positions[k] > L:
-        #            atomList[j].positions[k] -= L
-#
-#                if atomList[j].positions[k] < 0:
-#                    atomList[j].positions[k] += L
+        for atom in atomList: # Keep atoms inside an L by L by L dimension box
+            for k in range(3):
+                atom.positions[k] += -L * np.floor(atom.positions[k] / L)
 
         calcForces(atomList, energyFile)  # Update accelerations
 
         netVelocity = np.zeros(3)
 
-        #if i < numTimeSteps / 2 and i != 0 and i % 5 == 0:
-        #    gaussianVelocities(atomList, TARGET_TEMP)
+        if False and i < numTimeSteps / 2. and i != 0. and i % 5. == 0.:
+            gaussianVelocities(atomList, TARGET_TEMP)
 
         for j in range(len(atomList)):  # update velocities
             atomList[j].velocities += (.5 * (atomList[j].accelerations + atomList[j].oldAccelerations)) * timeStep
@@ -123,19 +98,19 @@ def gaussianVelocities(atomList, targetTemp):
     for i in range(len(atomList)):
         # Dot product of velocity vectors
         dot = np.dot(atomList[i].velocities, atomList[i].velocities) / N
-        instantTemp += MASS * dot
+        instantTemp += MASS_kg * dot
 
     instantTemp /= (3 * len(atomList) - 3)
-    instantTemp = np.sqrt(instantTemp)
+    instantTemp = np.sqrt(targetTemp / instantTemp)
 
     for i in range(len(atomList)):  # V = lambda * V
         atomList[i].velocities *= instantTemp
 
 
 def calcForces(atomList, energyFile):
-    netPotential = 0
+    netPotential_star = 0
     for i in range(len(atomList)):  # Set all accelerations to zero
-        atomList[i].accelerations = [0, 0, 0]
+        atomList[i].accelerations = [0., 0., 0.]
 
     # Iterate over all atoms in atomList
     for i in range(len(atomList)):
@@ -145,26 +120,27 @@ def calcForces(atomList, energyFile):
                 distArr = atomList[i].positions - atomList[j].positions
                 # Boundary conditions - Interact through walls if closer
                 distArr = distArr - L * np.round(distArr / L)
-                for k in range(3):
-                    while distArr[k] >= .5 * L:
-                        distArr[k] -= L
-                    while distArr[k] < -.5 * L:
-                        distArr[k] += L
+                #for k in range(3):
+                #    while distArr[k] >= .5 * L:
+                #        distArr[k] -= L
+                #    while distArr[k] < -.5 * L:
+                #        distArr[k] += L
 
                 dot = np.dot(distArr, distArr)
                 r = np.sqrt(dot)  # Distance vector magnitude
-                distArr /= r  # Find unit direction of force
+                r_star = r / SIGMA
 
-                netPotential += 4 * EPS * ((SIGMA / r) ** 12 - (SIGMA / r) ** 6)
+                # potential in Joules per EPSILON
+                netPotential_star += 4 * (r_star ** -12 - r_star ** -6)
 
-                force = 24 * EPS / dot * (2 * (SIGMA / dot) ** 12 - (SIGMA / dot) ** 6)
-
-                energyFile.write("{} on {}: {} \n".format(i, j, force))
+                # Force in Newton sigmas per epsilon
+                force_star = 24 / r_star * (2 * r_star ** -12) - (r_star ** -6)
+                force = force_star * EPSILON / SIGMA
+                energyFile.write("{} on {}: {} \n".format(i, j, force_star))
                 # energyFile.write("----------------- \n")
-                #for k in range(3):
-                atomList[i].accelerations += (force * distArr / MASS)
+                atomList[i].accelerations += (force_star * distArr / r_star)
 
-    return netPotential
+    return netPotential_star * EPSILON
 
 
 class Atom:
