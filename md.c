@@ -7,7 +7,7 @@
 #define kB 1.38064852e-23						//Bolztmann's constant (J/K)
 #define NA 6.02214e23							//Avogadro's constant
 
-#define N_STEPS 10000							//Number of simulation steps
+#define N_STEPS 100000							//Number of simulation steps
 #define BIN 100								//Binning number for radial distribution histogram
 #define DIMENSIONS 3							//Number of coordinates (x,y,z)
 #define N 32								//Number of particles
@@ -19,7 +19,7 @@
 #define epsilon 1.65401693e-21						//Epsilon of gas (J)
 #define THERMO (N_STEPS / 2.0)						//Thermostat for specified portion of N_STEPS (i.e. first quarter, half, etc.)
 #define APPLY_T 5							//Apply thermostat every X number of steps
-static char atom1 = "Ar";						//Atom type
+static char *atom1 = "Ar";						//Atom type
 
 /* THE ABOVE PARAMETERS CAN BE ADJUSTED TO CHANGE THE PROPERTIES OF THE GAS IN THE MACROS BELOW							*
  * Lennard-Jones parameters (epsilon and sigma) taken from: https://www.sciencedirect.com/science/article/pii/002199917590042X?via%3Dihub 	*/
@@ -131,7 +131,7 @@ int main()
                         for(j=0;j<N;j++)
                         {
 				if(j % 5 == 0)
-	                                fprintf(ftraj,"%s\t",atom2);
+	                                fprintf(ftraj,"%s\t",atom1);
 				else
 					fprintf(ftraj,"%s\t",atom1);
 
@@ -150,7 +150,7 @@ int main()
                         for(j=0;j<N;j++)
                         {
 				if(j % 5 == 0)
-	                                fprintf(fvel,"%s\t",atom2);
+	                                fprintf(fvel,"%s\t",atom1);
 				else
 					fprintf(fvel,"%s\t",atom1);
 
@@ -222,7 +222,7 @@ int main()
 	printf("*****************************************************************************\n");
 	printf("Starting Temperature (K): %lf\n",T);
         printf("Average Temperature (K): %lf\n",Tavg);
-	printf("Percent Difference: %.2lf%\n",(Tavg-T)/T*100.0);
+	printf("Percent Difference: %.2lf \n",(Tavg-T)/T*100.0);
 	printf("*****************************************************************************\n");
 	printf("--- PRESSURE ---\n");
 	printf("Average Reduced Pressure: %lf\n",Pavg);
