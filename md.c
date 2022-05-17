@@ -248,6 +248,7 @@ int main()
 	return(0);
 }
 
+/**
 //  UNCOMMENT FOR SIMPLE CUBIC
 void crystalLattice()
 {
@@ -283,8 +284,8 @@ void crystalLattice()
 //		printf("%lf\t %lf\t %lf\n",v[i][0],v[i][1],v[i][2]);
 
 }
+*/
 
-/*
 void crystalLattice()
 {
 	int i,j,k;
@@ -337,7 +338,6 @@ void crystalLattice()
 //        for(i=0;i<N;i++)
 //        	printf("%lf\t %lf\t %lf\n",r[i][0],r[i][1],r[i][2]);
 }
-*/
 
 void wrapToBox()
 {
