@@ -6,7 +6,7 @@ kB = 1.38064852e-23 # J / K
 Na = 6.022e23 # Atoms per mol
 
 numTimeSteps = 10000  # Parameters to change for simulation
-n = 4
+n = 6
 timeStep = .001 # dt_star
 
 N = n ** 3
@@ -17,7 +17,7 @@ EPS_STAR = EPSILON / kB # ~119.8 Kelvin
 rhostar = .7  # Dimensionless density of gas
 rho = rhostar / (SIGMA ** 3)  # density
 L = ((N / rho) ** (1 / 3))  # unit cell length
-rCutoff = SIGMA * 4.5
+rCutoff = SIGMA * 2.5
 TARGET_TEMP = 1.1 * EPS_STAR
 # 39.9 is amu mass of argon, 10 is a conversion between the missing units :)
 MASS = 39.9 * 10 / Na / kB # K * ps^2 / A^2
@@ -66,15 +66,17 @@ def main():
             energyFile.write("Accelerations: %f %f %f\n - \n" % tuple(atom.accelerations))
             text_file.write("A %f %f %f\n" % tuple(atom.positions))
 
-        netPotential = calcForces(atomList,energyFile) # Update accelerations
 
         totalVelSquared = 0
 
         for atom in atomList: # Find new position
             atom.positions += atom.velocities * timeStep + 0.5 * atom.accelerations * timeStep * timeStep
-            atom.oldAccelerations = atom.accelerations.copy()
             atom.positions += -L * np.floor(atom.positions / L)
+            atom.oldAccelerations = atom.accelerations.copy()
 
+        netPotential = calcForces(atomList,energyFile) # Update accelerations
+
+        for atom in atomList:
             atom.velocities += (.5 * (atom.accelerations + atom.oldAccelerations)) * timeStep
             totalVelSquared += np.dot(atom.velocities, atom.velocities)
 
