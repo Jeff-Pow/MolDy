@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import time
 
 kB = 1.38064852e-23 # J / K
-Na = 6.022e-23 # Atoms per mol
+Na = 6.022e23 # Atoms per mol
 
 numTimeSteps = 10000  # Parameters to change for simulation
 n = 4
@@ -17,12 +17,11 @@ EPS_STAR = EPSILON / kB # ~119.8 Kelvin
 rhostar = .7  # Dimensionless density of gas
 rho = rhostar / (SIGMA ** 3)  # density
 L = ((N / rho) ** (1 / 3))  # unit cell length
-rCutoff = SIGMA * 2.5
+rCutoff = SIGMA * 4.5
 TARGET_TEMP = 1.1 * EPS_STAR
-MASS = 39.9 * 10 / 6.022169 / 1.380662
-MASS_amu = 39.9 # amu
-MASS_kg = MASS_amu * 1.660539e-27 # kg
-timeStep *= np.sqrt((MASS * SIGMA ** 2) / EPS_STAR) # Picoseconds ???
+# 39.9 is amu mass of argon, 10 is a conversion between the missing units :)
+MASS = 39.9 * 10 / Na / kB # K * ps^2 / A^2
+timeStep *= np.sqrt((MASS * SIGMA ** 2) / EPS_STAR) # Picoseconds
 
 
 
@@ -50,11 +49,11 @@ def main():
     count = .05
     currTime = time.time()
     for i in range(numTimeSteps):
-        if i == count * numTimeSteps:
-            print("{}% \n".format(i / numTimeSteps * 100))
-            count += .05
-            count = round(count, 3)
-        # print(i)
+        # if i == count * numTimeSteps:
+        #     print("{}% \n".format(i / numTimeSteps * 100))
+        #     count += .05
+        #     count = round(count, 3)
+        print(i)
 
 
         text_file.write("%i \n \n" % N)
@@ -69,22 +68,15 @@ def main():
 
         netPotential = calcForces(atomList,energyFile) # Update accelerations
 
+        totalVelSquared = 0
+
         for atom in atomList: # Find new position
-            for k in range(3):
-                atom.positions[k] += atom.velocities[k] * timeStep + .5 * atom.accelerations[k] * timeStep ** 2
-                atom.oldAccelerations[k] = atom.accelerations[k]
+            atom.positions += atom.velocities * timeStep + 0.5 * atom.accelerations * timeStep * timeStep
+            atom.oldAccelerations = atom.accelerations.copy()
+            atom.positions += -L * np.floor(atom.positions / L)
 
-        for atom in atomList: # Keep atoms inside an L by L by L dimension box
-            for k in range(3):
-                atom.positions[k] += -L * np.floor(atom.positions[k] / L)
-
-        netVelocity = np.zeros(3)
-
-
-
-        for atom in atomList:  # update velocities
             atom.velocities += (.5 * (atom.accelerations + atom.oldAccelerations)) * timeStep
-            netVelocity += atom.velocities
+            totalVelSquared += np.dot(atom.velocities, atom.velocities)
 
         if i < numTimeSteps / 2. and i != 0. and i % 5 == 0:
             thermostat(atomList, TARGET_TEMP)
@@ -92,9 +84,7 @@ def main():
         if i > numTimeSteps / 2:
             conserved.write("Time: {} \n".format(i))
 
-            v2 = np.dot(netVelocity, netVelocity)
-
-            netKE = .5 * MASS * v2 / N
+            netKE = .5 * MASS * totalVelSquared
 
             conserved.write("KE: {} \n".format(netKE))
             KE.append(netKE)
@@ -145,17 +135,16 @@ def calcForces(atomList, energyFile):
             dot = np.dot(distArr, distArr)
             r = np.sqrt(dot)  # Distance vector magnitude
 
-            if r < rCutoff:
+            if r <= rCutoff:
+                sor = SIGMA / r # sor = sigma over r
 
-                force = 24 * EPS_STAR / dot * ((2 * (SIGMA / r) ** 12) -
-                                                           (SIGMA / r) ** 6)
+                force_over_r = 24 * EPS_STAR / dot * ((2 * sor ** 12 - sor ** 6))
+                netPotential += 4 * EPS_STAR * (sor ** 12 - sor ** 6)
 
-                netPotential += 4 * EPS_STAR / dot * ((SIGMA / r) ** 12 - (
-                                                            SIGMA / r) ** 6) / N
-                energyFile.write("{} on {}: {} \n".format(i, j, force))
+                energyFile.write("{} on {}: {} \n".format(i, j, force_over_r * r))
                 # energyFile.write("----------------- \n")
-                atomList[i].accelerations += (force * distArr / MASS)
-                atomList[j].accelerations -= (force * distArr / MASS)
+                atomList[i].accelerations += (force_over_r * distArr / MASS)
+                atomList[j].accelerations -= (force_over_r * distArr / MASS)
 
     return netPotential
 
