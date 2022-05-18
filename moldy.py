@@ -19,7 +19,7 @@ rho = rhostar / (SIGMA ** 3)  # density
 L = ((N / rho) ** (1 / 3))  # unit cell length
 rCutoff = SIGMA * 2.5
 TARGET_TEMP = 1.1 * EPS_STAR
-# 39.9 is amu mass of argon, 10 is a conversion between the missing units :)
+#
 MASS = 39.9 * 10 / Na / kB # K * ps^2 / A^2
 timeStep *= np.sqrt((MASS * SIGMA ** 2) / EPS_STAR) # Picoseconds
 
@@ -71,12 +71,12 @@ def main():
 
         for atom in atomList: # Find new position
             atom.positions += atom.velocities * timeStep + 0.5 * atom.accelerations * timeStep * timeStep
-            atom.positions += -L * np.floor(atom.positions / L)
+            atom.positions += -L * np.floor(atom.positions / L) # Keep atom inside box
             atom.oldAccelerations = atom.accelerations.copy()
 
-        netPotential = calcForces(atomList,energyFile) # Update accelerations
+        netPotential = calcForces(atomList, energyFile) # Update accelerations
 
-        for atom in atomList:
+        for atom in atomList: # Update velocities
             atom.velocities += (.5 * (atom.accelerations + atom.oldAccelerations)) * timeStep
             totalVelSquared += np.dot(atom.velocities, atom.velocities)
 
