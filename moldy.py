@@ -1,12 +1,13 @@
-import numpy as np
-import matplotlib.pyplot as plt
 import time
+
+import matplotlib.pyplot as plt
+import numpy as np
 
 kB = 1.38064852e-23 # J / K
 Na = 6.022e23 # Atoms per mol
 
 numTimeSteps = 10000  # Parameters to change for simulation
-n = 6
+n = 2
 timeStep = .001 # dt_star
 
 N = n ** 3
