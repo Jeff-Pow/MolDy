@@ -7,7 +7,7 @@ kB = 1.38064852e-23 # J / K
 Na = 6.022e23 # Atoms per mol
 
 numTimeSteps = 10000  # Parameters to change for simulation
-n = 2
+n = 20
 timeStep = .001 # dt_star
 
 N = n ** 3
@@ -15,11 +15,12 @@ SIGMA = 3.405  # Angstroms
 EPSILON = 1.6540e-21  # Joules
 EPS_STAR = EPSILON / kB # ~119.8 Kelvin
 
-rhostar = .7  # Dimensionless density of gas
+rhostar = .45  # Dimensionless density of gas
+tStar = 1.2 # Reduced units of temperature
 rho = rhostar / (SIGMA ** 3)  # density
 L = ((N / rho) ** (1 / 3))  # unit cell length
 rCutoff = SIGMA * 2.5
-TARGET_TEMP = 1.1 * EPS_STAR
+TARGET_TEMP = tStar * EPS_STAR
 #
 MASS = 39.9 * 10 / Na / kB # K * ps^2 / A^2
 timeStep *= np.sqrt((MASS * SIGMA ** 2) / EPS_STAR) # Picoseconds
@@ -47,13 +48,8 @@ def main():
     conserved.write("Temp Scalar: {} \n \n".format(thermostat(atomList, TARGET_TEMP)))
 
 
-    count = .05
     currTime = time.time()
     for i in range(numTimeSteps):
-        # if i == count * numTimeSteps:
-        #     print("{}% \n".format(i / numTimeSteps * 100))
-        #     count += .05
-        #     count = round(count, 3)
         print(i)
 
 
@@ -73,6 +69,7 @@ def main():
         for atom in atomList: # Find new position
             atom.positions += atom.velocities * timeStep + 0.5 * atom.accelerations * timeStep * timeStep
             atom.positions += -L * np.floor(atom.positions / L) # Keep atom inside box
+
             atom.oldAccelerations = atom.accelerations.copy()
 
         netPotential = calcForces(atomList, energyFile) # Update accelerations
@@ -106,8 +103,17 @@ def main():
     text_file.close()
     energyFile.close()
     conserved.close()
-    plt.show()
+    avgPE = 0
+    for value in PE:
+        avgPE += value
+    avgPE /= len(PE)
+    # Long-range correction to energy
+    SoLo2 = SIGMA / (L / 2.0) # Sigma over L over 2
+    Ulrc = (8.0 / 3.0) * np.pi * N * rhostar * EPS_STAR * ((1.0 / 3.0) * (SoLo2 ** 9) - (SoLo2 ** 3))
+    reducedPE = (avgPE + Ulrc) / N / EPS_STAR
+    print("Reduced potential with long range correction: {}".format(reducedPE)) 
 
+    plt.show()
 
 def thermostat(atomList, targetTemp):
     instantTemp = 0
