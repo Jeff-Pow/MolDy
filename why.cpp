@@ -3,8 +3,8 @@
 //
 
 #include <iostream>
-#include <cmath>
-#include <ctime>
+#include <math.h>
+#include <time.h>
 #include <random>
 #include <fstream>
 
@@ -26,7 +26,7 @@ const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
 const int numTimeSteps = 10000; // Parameters to change for simulation
-const int n = 20;
+const int n = 6;
 const double dt_star= .001;
 
 const int N = n * n * n; // Number of atoms in simulation
@@ -73,8 +73,6 @@ int main() {
             }
         }
     }
-    // atomList.push_back(Atom(1.19 * SIGMA, 0.0, 0.0));
-    // atomList.push_back(Atom(0.0, 0.0, 0.0));
     
     for (int i = 0; i < N; ++i) { // Randomize velocities
          for (int j = 0; j < 3; ++j) {
@@ -88,21 +86,27 @@ int main() {
     double totalVelSquared;
     double netPotential;
     clock_t begin = clock();
-    for (int i = 0; i < numTimeSteps; ++i) {
-        std::cout << i << "\n";
 
+    std::cout << "Starting program \n";
+    double count = .05;
+    for (int i = 0; i < numTimeSteps; ++i) { // Loop handles integration and printing to files
+	if (i > count * numTimeSteps) {
+	    std::cout << count * 100 << " % \n";
+	    count += .05;
+	}
+	
         text_file << N << "\n \n";
-        debug << "Time: " << i << "\n";
+        // debug << "Time: " << i << "\n";
 
 
         for (int j = 0; j < N; ++j) {
             text_file << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-            debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-            debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
-            debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
-            debug << "- \n";
+            //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
+            //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
+            //debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
+            //debug << "- \n";
         }
-        debug << "------------------------------------------------- \n";
+        //debug << "------------------------------------------------- \n";
 
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
@@ -135,12 +139,12 @@ int main() {
 	
 	double netKE = .5 * MASS * totalVelSquared;
 
-	cppenergy << "KE: " << netKE << "\n";
+	//cppenergy << "KE: " << netKE << "\n";
 	KE.push_back(netKE);
-	cppenergy << "PE: " << netPotential << "\n";
+	//cppenergy << "PE: " << netPotential << "\n";
 	PE.push_back(netPotential);
-	cppenergy << "Total energy: " << netPotential + netKE << "\n";
-	cppenergy << "------------------------------------------ \n";
+	//cppenergy << "Total energy: " << netPotential + netKE << "\n";
+	//cppenergy << "------------------------------------------ \n";
 	netE.push_back(netPotential + netKE);
 	}
 
