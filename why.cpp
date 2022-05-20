@@ -90,16 +90,16 @@ int main() {
     std::cout << "Starting program \n";
     double count = .05;
     for (int i = 0; i < numTimeSteps; ++i) { // Loop handles integration and printing to files
-	if (i > count * numTimeSteps) {
-	    std::cout << count * 100 << " % \n";
-	    count += .05;
-	}
-	
+        if (i > count * numTimeSteps) {
+            std::cout << count * 100 << " % \n";
+            count += .05;
+        }
+        
         text_file << N << "\n \n";
         // debug << "Time: " << i << "\n";
 
 
-        for (int j = 0; j < N; ++j) {
+        for (int j = 0; j < N; ++j) { // Write positions to xyz file
             text_file << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
             //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
             //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
@@ -111,9 +111,9 @@ int main() {
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
                 atomList[k].positions[j] += atomList[k].velocities[j] * timeStep 
-			+ .5 * atomList[k].accelerations[j] * timeStep * timeStep;
+            + .5 * atomList[k].accelerations[j] * timeStep * timeStep;
                 atomList[k].positions[j] += -L * std::floor(atomList[k].positions[j] / L); // Keep atom inside box
-		double cringe = -L * std::floor(atomList[k].positions[j] / L);
+        double cringe = -L * std::floor(atomList[k].positions[j] / L);
                 atomList[k].oldAccelerations[j] = atomList[k].accelerations[j];
             }
         }
@@ -129,35 +129,34 @@ int main() {
             }
         }
 
-        if (i < numTimeSteps / 2 && i != 0 && i % 5 == 0) {
+        if (i < numTimeSteps / 2 && i != 0 && i % 5 == 0) { // Apply velocity modifications for first half of sample
             thermostat(atomList, TARGET_TEMP);
         }
 
         // TODO: Conservation of energy file
-	if (i > numTimeSteps / 2) {
-	cppenergy << "Time: " << i << "\n";
-	
-	double netKE = .5 * MASS * totalVelSquared;
+        if (i > numTimeSteps / 2) { // Record energies to arrays and file
+            cppenergy << "Time: " << i << "\n";
+            
+            double netKE = .5 * MASS * totalVelSquared;
 
-	//cppenergy << "KE: " << netKE << "\n";
-	KE.push_back(netKE);
-	//cppenergy << "PE: " << netPotential << "\n";
-	PE.push_back(netPotential);
-	//cppenergy << "Total energy: " << netPotential + netKE << "\n";
-	//cppenergy << "------------------------------------------ \n";
-	netE.push_back(netPotential + netKE);
-	}
-
+            //cppenergy << "KE: " << netKE << "\n";
+            KE.push_back(netKE);
+            //cppenergy << "PE: " << netPotential << "\n";
+            PE.push_back(netPotential);
+            //cppenergy << "Total energy: " << netPotential + netKE << "\n";
+            //cppenergy << "------------------------------------------ \n";
+            netE.push_back(netPotential + netKE);
+        }
     }
 
-    double avgPE = 0;
+    double avgPE = 0; // Average PE is average of PE array
     for (int i = 0; i < PE.size(); i++) {
         avgPE += PE[i];
     }
     avgPE /= PE.size();
 
     double SoLo2 = SIGMA / (L / 2);
-    double Ulrc = (8.0 / 3.0) * M_PI * N * rhostar * EPS_STAR;
+    double Ulrc = (8.0 / 3.0) * M_PI * N * rhostar * EPS_STAR; // Long range correction to potential formula
     double temp = 1.0/3.0 * std::pow(SoLo2, 9.0);
     double temp1 = std::pow(SoLo2, 3.0);
     Ulrc *= (temp - temp1);
@@ -189,6 +188,7 @@ void thermostat(std::vector<Atom> &atomList, double targetTemp) {
     instantTemp /= (3 * N - 3);
     double tempScalar = std::sqrt(targetTemp / instantTemp);
 
+    // V = V * lambda
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < 3; ++j) {
             atomList[i].velocities[j] *= tempScalar;
@@ -210,7 +210,7 @@ double calcForces(std::vector<Atom> &atomList) {
         for (int j = i + 1; j < N; ++j) {
             for (int k = 0; k < 3; ++k) {
                 distArr[k] = atomList[i].positions[k] - atomList[j].positions[k];
-		// Boundary conditions - Calculate interaction through wall if thats closest distance between molecules
+        // Boundary conditions - Calculate interaction through wall if thats closest distance between molecules
                 distArr[k] = distArr[k] - L * std::round(distArr[k] / L); 
             }
 
