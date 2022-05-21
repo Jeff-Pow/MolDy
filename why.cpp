@@ -26,10 +26,11 @@ const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
 const int numTimeSteps = 10000; // Parameters to change for simulation
-const int n = 6;
+// const int n = 4; // Side length for simple cubic calculations
 const double dt_star= .001;
 
-const int N = n * n * n; // Number of atoms in simulation
+// const int N = n * n * n; // Number of atoms in simulation for simple cubic calculations
+const int N = 32;
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -40,13 +41,15 @@ const double L = std::cbrt(N / rho); // Unit cell length
 const double rCutoff = SIGMA * 2.5;
 const double tStar = 1.24; // Reduced units of temperature
 const double TARGET_TEMP = tStar * EPS_STAR;
-// 39.9 is amu mass of argon, 10 is a conversion between the missing units :)
+// 39.9 is mass of argon in amu, 10 is a conversion between the missing units :)
 const double MASS = 39.9 * 10 / Na / Kb; // K * ps^2 / A^2
 const double timeStep = dt_star * std::sqrt(MASS * SIGMA * SIGMA / EPS_STAR); // Convert time step to picoseconds
 
 double dot(double x, double y, double z);
 void thermostat(std::vector<Atom> &atomList, double targetTemp);
 double calcForces(std::vector<Atom> &atomList);
+// void faceCenteredCell(std::vector<Atom> &atomList);
+double radialDistribution(std::ifstream &xyzFile);
 
 int main() {
     std::ofstream text_file;
@@ -64,7 +67,10 @@ int main() {
     std::default_random_engine generator(rd());
     std::uniform_real_distribution<double> distribution(-1.0, 1.0);
 
+
     std::vector<Atom> atomList;
+    atomList.reserve(N);
+    /** Commented section creates a simple cubic lattice
        // Sigma is the distance between atoms at resting state
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
@@ -73,7 +79,28 @@ int main() {
             }
         }
     }
+    */
     
+
+    // Implements a face centered lattice structure
+    double n = std::cbrt(N / 4.0); // Number of unit cells in each direction
+    double q = std::pow((N / 4.0), (1.0 / 3.0));
+    
+    double dr = L / n; // Distance between 
+    double dro2 = dr / 2.0; // dr over 2
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            for (int k = 0; k < n; k++) {
+                atomList.push_back(Atom(i * dr, j * dr, k * dr));
+                atomList.push_back(Atom(i * dr + dro2, j * dr + dro2, k * dr));
+                atomList.push_back(Atom(i * dr + dro2, j * dr, k * dr + dro2));
+                atomList.push_back(Atom(i * dr, j * dr + dro2, k * dr + dro2));
+            }
+        }
+    }
+    
+
     for (int i = 0; i < N; ++i) { // Randomize velocities
          for (int j = 0; j < 3; ++j) {
              atomList[i].velocities[j] = distribution(generator);
@@ -101,19 +128,18 @@ int main() {
 
         for (int j = 0; j < N; ++j) { // Write positions to xyz file
             text_file << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-            //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-            //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
-            //debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
-            //debug << "- \n";
+            // debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
+            // debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
+            // debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
+            // debug << "- \n";
         }
-        //debug << "------------------------------------------------- \n";
+        // debug << "------------------------------------------------- \n";
 
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
                 atomList[k].positions[j] += atomList[k].velocities[j] * timeStep 
-            + .5 * atomList[k].accelerations[j] * timeStep * timeStep;
+                        + .5 * atomList[k].accelerations[j] * timeStep * timeStep;
                 atomList[k].positions[j] += -L * std::floor(atomList[k].positions[j] / L); // Keep atom inside box
-        double cringe = -L * std::floor(atomList[k].positions[j] / L);
                 atomList[k].oldAccelerations[j] = atomList[k].accelerations[j];
             }
         }
@@ -169,8 +195,15 @@ int main() {
     std::cout << "Time elapsed: \n";
     std::cout << time << " seconds \n";
     std::cout << time / 60 << " minutes" << std::endl;
+
     text_file.close();
     debug.close();
+    cppenergy.close();
+
+    std::ifstream xyzFile;
+    xyzFile.open("cpp.xyz");
+    std::cout << "Finding radial distribution \n";
+    std::cout << radialDistribution(xyzFile) << std::endl;
 
     return 0;
 }
@@ -235,5 +268,39 @@ double calcForces(std::vector<Atom> &atomList) {
         }
     }
     return netPotential;
+}
+
+/*
+void faceCenteredCell(std::vector<Atom> &atomList) {
+    // Each face centered unit cell has four atoms
+    // Method creates a cube of face centered unit cells
+    int n = std::pow(N / 4.0, 1.0 / 3.0); // Number of unit cells in each direction
+    double dr = L / n; // Distance between 
+    double dro2 = dr / 2.0; // dr over 2
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            for (int k = 0; k < n; k++) {
+                atomList.push_back(Atom(i * dr, j * dr, k * dr));
+                atomList.push_back(Atom(i * dr + dro2, j * dr + dro2, k * dr));
+                atomList.push_back(Atom(i * dr + dro2, j * dr, k * dr + dro2));
+                atomList.push_back(Atom(i * dr, j * dr + dro2, k * dr + dro2));
+            }
+        }
+    }
+}
+*/
+
+double radialDistribution(std::ifstream &xyzFile) {
+    
+    int i, j, n;
+    int row;
+    double dx, dy, dz, r, dr, rij;
+    double g[100];
+    double x[N], y[N], z[N];
+
+    dr = L / 2.0 / 100;
+    
+    return -1.0;
 }
 

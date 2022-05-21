@@ -7,7 +7,7 @@
 #define kB 1.38064852e-23						//Bolztmann's constant (J/K)
 #define NA 6.02214e23							//Avogadro's constant
 
-#define N_STEPS 100000							//Number of simulation steps
+#define N_STEPS 10000							//Number of simulation steps
 #define BIN 100								//Binning number for radial distribution histogram
 #define DIMENSIONS 3							//Number of coordinates (x,y,z)
 #define N 32								//Number of particles
