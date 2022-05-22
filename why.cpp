@@ -26,11 +26,9 @@ const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
 const int numTimeSteps = 10000; // Parameters to change for simulation
-// const int n = 4; // Side length for simple cubic calculations
 const double dt_star= .001;
 
-// const int N = n * n * n; // Number of atoms in simulation for simple cubic calculations
-const int N = 32;
+const int N = 500; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -46,9 +44,10 @@ const double MASS = 39.9 * 10 / Na / Kb; // K * ps^2 / A^2
 const double timeStep = dt_star * std::sqrt(MASS * SIGMA * SIGMA / EPS_STAR); // Convert time step to picoseconds
 
 double dot(double x, double y, double z);
-void thermostat(std::vector<Atom> &atomList, double targetTemp);
+void thermostat(std::vector<Atom> &atomList);
 double calcForces(std::vector<Atom> &atomList);
-// void faceCenteredCell(std::vector<Atom> &atomList);
+std::vector<Atom> faceCenteredCell();
+std::vector<Atom> simpleCubicCell();
 double radialDistribution(std::ifstream &xyzFile);
 
 int main() {
@@ -68,37 +67,7 @@ int main() {
     std::uniform_real_distribution<double> distribution(-1.0, 1.0);
 
 
-    std::vector<Atom> atomList;
-    atomList.reserve(N);
-    /** Commented section creates a simple cubic lattice
-       // Sigma is the distance between atoms at resting state
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            for (int k = 0; k < n; k++) {
-                atomList.push_back(Atom(i * SIGMA, j * SIGMA, k * SIGMA));
-            }
-        }
-    }
-    */
-    
-
-    // Implements a face centered lattice structure
-    double n = std::cbrt(N / 4.0); // Number of unit cells in each direction
-    double q = std::pow((N / 4.0), (1.0 / 3.0));
-    
-    double dr = L / n; // Distance between 
-    double dro2 = dr / 2.0; // dr over 2
-
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            for (int k = 0; k < n; k++) {
-                atomList.push_back(Atom(i * dr, j * dr, k * dr));
-                atomList.push_back(Atom(i * dr + dro2, j * dr + dro2, k * dr));
-                atomList.push_back(Atom(i * dr + dro2, j * dr, k * dr + dro2));
-                atomList.push_back(Atom(i * dr, j * dr + dro2, k * dr + dro2));
-            }
-        }
-    }
+    std::vector<Atom> atomList = faceCenteredCell();
     
 
     for (int i = 0; i < N; ++i) { // Randomize velocities
@@ -107,7 +76,7 @@ int main() {
          }
     }
    
-    thermostat(atomList, TARGET_TEMP);
+    thermostat(atomList); // Make velocities more accurate
 
 
     double totalVelSquared;
@@ -156,10 +125,9 @@ int main() {
         }
 
         if (i < numTimeSteps / 2 && i != 0 && i % 5 == 0) { // Apply velocity modifications for first half of sample
-            thermostat(atomList, TARGET_TEMP);
+            thermostat(atomList);
         }
 
-        // TODO: Conservation of energy file
         if (i > numTimeSteps / 2) { // Record energies to arrays and file
             cppenergy << "Time: " << i << "\n";
             
@@ -212,14 +180,14 @@ double dot (double x, double y, double z) { // Returns dot product of a vector
     return x * x + y * y + z * z;
 }
 
-void thermostat(std::vector<Atom> &atomList, double targetTemp) {
+void thermostat(std::vector<Atom> &atomList) {
     double instantTemp = 0;
     for (int i = 0; i < N; i++) {
         instantTemp += MASS * dot(atomList[i].velocities[0], atomList[i].velocities[1], atomList[i].velocities[2]);
     }
 
     instantTemp /= (3 * N - 3);
-    double tempScalar = std::sqrt(targetTemp / instantTemp);
+    double tempScalar = std::sqrt(TARGET_TEMP / instantTemp);
 
     // V = V * lambda
     for (int i = 0; i < N; i++) {
@@ -270,13 +238,29 @@ double calcForces(std::vector<Atom> &atomList) {
     return netPotential;
 }
 
-/*
-void faceCenteredCell(std::vector<Atom> &atomList) {
+std::vector<Atom> simpleCubicCell() {
+    double n = std::cbrt(N);
+
+    std::vector<Atom> atomList;
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            for (int k = 0; k < n; k++) {
+                atomList.push_back(Atom(i * SIGMA, j * SIGMA, k * SIGMA));
+            }
+        }
+    }
+    return atomList;
+}
+
+std::vector<Atom> faceCenteredCell() {
     // Each face centered unit cell has four atoms
     // Method creates a cube of face centered unit cells
-    int n = std::pow(N / 4.0, 1.0 / 3.0); // Number of unit cells in each direction
-    double dr = L / n; // Distance between 
+
+    double n = std::cbrt(N / 4.0); // Number of unit cells in each direction
+    double dr = L / n; // Distance between two corners in a unit cell
     double dro2 = dr / 2.0; // dr over 2
+
+    std::vector<Atom> atomList;
 
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
@@ -288,18 +272,20 @@ void faceCenteredCell(std::vector<Atom> &atomList) {
             }
         }
     }
+    return atomList;
 }
-*/
+
 
 double radialDistribution(std::ifstream &xyzFile) {
     
     int i, j, n;
     int row;
-    double dx, dy, dz, r, dr, rij;
+    double dx, dy, dz, r, rij;
     double g[100];
     double x[N], y[N], z[N];
 
-    dr = L / 2.0 / 100;
+    double dr = L / 2.0 / 100;
+    
     
     return -1.0;
 }
