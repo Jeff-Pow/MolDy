@@ -1,12 +1,16 @@
 //
-// Created by jeff on 5/18/2022.
+// Created by Jeff Powell on 5/18/2022.
 //
 
+#include <cstdio>
 #include <iostream>
-#include <math.h>
-#include <time.h>
+#include <sstream>
+#include <cmath>
+#include <ctime>
 #include <random>
 #include <fstream>
+#include <string>
+#include <array>
 
 class Atom {
 public:
@@ -28,16 +32,16 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 10000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 500; // Number of atoms in simulation
+const int N = 256; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
 
-const double rhostar = .6; // Dimensionless density of gas
+const double rhostar = 1.1; // Dimensionless density of gas
 const double rho = rhostar / std::pow(SIGMA, 3); // Density of gas
 const double L = std::cbrt(N / rho); // Unit cell length
 const double rCutoff = SIGMA * 2.5; // Forces are negligible past this distance, not worth calculating
-const double tStar = 1.24; // Reduced units of temperature
+const double tStar = 2.6; // Reduced units of temperature
 const double TARGET_TEMP = tStar * EPS_STAR;
 // 39.9 is mass of argon in amu, 10 is a conversion between the missing units :)
 const double MASS = 39.9 * 10 / Na / Kb; // K * ps^2 / A^2
@@ -48,9 +52,10 @@ void thermostat(std::vector<Atom> &atomList);
 double calcForces(std::vector<Atom> &atomList);
 std::vector<Atom> faceCenteredCell();
 std::vector<Atom> simpleCubicCell();
-double radialDistribution(std::ifstream &xyzFile);
+void radialDistribution();
 
 int main() {
+    FILE * ptr;
     std::ofstream positionFile;
     std::ofstream debug;
     std::ofstream energyFile;
@@ -82,11 +87,13 @@ int main() {
     double totalVelSquared;
     double netPotential;
     clock_t begin = clock();
+    clock_t a = clock();
 
     std::cout << "Starting program \n";
     double count = .05;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
-        if (i > count * numTimeSteps) {
+
+        if (i > count * numTimeSteps) { // Percent progress
             std::cout << count * 100 << " % \n";
             count += .05;
         }
@@ -169,10 +176,13 @@ int main() {
     debug.close();
     energyFile.close();
 
-    std::ifstream xyzFile;
-    xyzFile.open("out.xyz");
     std::cout << "Finding radial distribution \n";
-    std::cout << radialDistribution(xyzFile) << std::endl;
+    radialDistribution();
+    clock_t z = clock();
+    double t = double(z - a) / (double)CLOCKS_PER_SEC;
+    std::cout << "Time elapsed: \n";
+    std::cout << t << " seconds \n";
+    std::cout << t / 60 << " minutes" << std::endl;
 
     return 0;
 }
@@ -281,17 +291,64 @@ std::vector<Atom> faceCenteredCell() {
 }
 
 
-double radialDistribution(std::ifstream &xyzFile) {
+void radialDistribution() {
     
-    int i, j, n;
-    int row;
-    double dx, dy, dz, r, rij;
-    double g[100];
-    double x[N], y[N], z[N];
+    std::string line;
+    std::string s;
 
+    int numDataPts = 100;
+    double data[numDataPts];
+    std::array<double, N> x;
+    std::array<double, N> y;
+    std::array<double, N> z;
+    // Arrays hold coordinates of each atom at each step
     double dr = L / 2.0 / 100;
-    
-    
-    return -1.0;
+
+    std::ifstream xyz ("out.xyz");
+
+    for (int i = 0; i < numTimeSteps; i++) {
+
+        std::getline(xyz, line); // Skips line with number of molecules
+        std::getline(xyz, line); // Skips comment line
+
+        for (int row = 0; row < N; row++) {
+            std::getline(xyz, line);
+            std::istringstream iss( line );
+
+            iss >> s >> x[row] >> y[row] >> z[row]; // Drop atom type, store coordinates of each atom
+        }
+        
+
+        if (i >= numTimeSteps / 2) {
+            for (int j = 0; j < N - 1; j++) {
+                for (int k = j + 1; k < N; k++) {
+                    double xDif = x[j] - x[k]; // Distance between atoms in x direction
+                    xDif = xDif - L * std::round(xDif / L); // Boundary conditions
+
+                    double yDif = y[j] - y[k];
+                    yDif = yDif - L * std::round(yDif / L);
+
+                    double zDif = z[j] - z[k];
+                    zDif = zDif - L * std::round(zDif / L);
+                    
+                    double r = std::sqrt(dot(xDif, yDif, zDif));
+
+                    if (r < L/2.0) {
+                        data[(int)(r / dr)] += 2.0;
+                    }
+                }
+            }
+        }
+    }
+    xyz.close();
+    std::ofstream radialData("Radial_Data.dat");
+
+    radialData << "r \t \t g(r) \n";
+    for (int i = 0; i < numDataPts; i++) {
+        double r = (i + .5) * dr;
+        data[i] /= (numTimeSteps / 2.0);
+        data[i] /= 4.0 * M_PI / 3.0 * (std::pow(i + 1, 3.0) - std::pow(i, 3.0)) * std::pow(dr, 3.0) * rho;
+        radialData << r << " , " << data[i] / N << "\n";
+    }
 }
 
