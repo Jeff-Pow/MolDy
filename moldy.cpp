@@ -44,7 +44,7 @@ const double rCutoff = SIGMA * 2.5; // Forces are negligible past this distance,
 const double tStar = 2.6; // Reduced units of temperature
 const double TARGET_TEMP = tStar * EPS_STAR;
 // 39.9 is mass of argon in amu, 10 is a conversion between the missing units :)
-const double MASS = 39.9 * 10 / Na / Kb; // K * ps^2 / A^2
+const double MASS = 39.9 * 10 / Na / Kb; // Kelvin * ps^2 / A^2
 const double timeStep = dt_star * std::sqrt(MASS * SIGMA * SIGMA / EPS_STAR); // Convert time step to picoseconds
 
 double dot(double x, double y, double z);
@@ -56,12 +56,12 @@ void radialDistribution();
 
 int main() {
     FILE * ptr;
-    std::ofstream positionFile;
-    std::ofstream debug;
-    std::ofstream energyFile;
-    positionFile.open("out.xyz");
-    debug.open("debug.dat");
-    energyFile.open("Energy.dat");
+    std::ofstream positionFile("out.xyz");
+    std::ofstream debug("debug.dat");
+    std::ofstream energyFile("Energy.dat");
+    //positionFile.open("out.xyz");
+    //debug.open("debug.dat");
+    //energyFile.open("Energy.dat");
 
     std::vector<double> KE;
     std::vector<double> PE;
@@ -196,10 +196,8 @@ void thermostat(std::vector<Atom> &atomList) {
     for (int i = 0; i < N; i++) {
         instantTemp += MASS * dot(atomList[i].velocities[0], atomList[i].velocities[1], atomList[i].velocities[2]);
     }
-
     instantTemp /= (3 * N - 3);
     double tempScalar = std::sqrt(TARGET_TEMP / instantTemp);
-
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < 3; ++j) {
             atomList[i].velocities[j] *= tempScalar; // V = V * lambda
@@ -231,14 +229,13 @@ double calcForces(std::vector<Atom> &atomList) {
             double r2 = dot(distArr[0], distArr[1], distArr[2]);
             double r = std::sqrt(r2); // Magnitude of distance between the atoms
 
-            if (r <= rCutoff) {
+            if (r <= rCutoff) { // Only calculate forces if atoms are within a certain distance
                 double sor = SIGMA / r; // SIGMA over r
                 double sor6 = std::pow(sor, 6);
                 double sor12 = sor6 * sor6;
 
                 double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
                 netPotential += 4 * EPS_STAR * (sor12 - sor6);
-
 
                 for (int k = 0; k < 3; ++k) {
                     // force divided by radius divided by the magnitude of the distance vector in direction k
@@ -247,14 +244,13 @@ double calcForces(std::vector<Atom> &atomList) {
                     atomList[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
                 }
             }
-
         }
     }
     return netPotential;
 }
 
 std::vector<Atom> simpleCubicCell() {
-    double n = std::cbrt(N);
+    double n = std::cbrt(N); // Number of atoms in each dimension
 
     std::vector<Atom> atomList;
     for (int i = 0; i < n; i++) {
