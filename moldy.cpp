@@ -11,6 +11,10 @@
 #include <fstream>
 #include <string>
 #include <array>
+#include "matplotlibcpp.h"
+#include "Python.h"
+namespace plt = matplotlibcpp;
+// If using graphing function, g++ moldy.cpp -I/usr/include/python3.10 -lpython3.10 -Ofast otherwise comment it out
 
 class Atom {
 public:
@@ -55,14 +59,11 @@ std::vector<Atom> simpleCubicCell();
 void radialDistribution();
 
 int main() {
-    FILE * ptr;
     std::ofstream positionFile("out.xyz");
     std::ofstream debug("debug.dat");
     std::ofstream energyFile("Energy.dat");
-    //positionFile.open("out.xyz");
-    //debug.open("debug.dat");
-    //energyFile.open("Energy.dat");
 
+    // Arrays to hold energy values at each step of the process
     std::vector<double> KE;
     std::vector<double> PE;
     std::vector<double> netE;
@@ -71,9 +72,7 @@ int main() {
     std::default_random_engine generator(rd());
     std::uniform_real_distribution<double> distribution(-1.0, 1.0);
 
-
     std::vector<Atom> atomList = faceCenteredCell();
-    
 
     for (int i = 0; i < N; ++i) { // Randomize velocities
          for (int j = 0; j < 3; ++j) {
@@ -82,7 +81,6 @@ int main() {
     }
    
     thermostat(atomList); // Make velocities more accurate
-
 
     double totalVelSquared;
     double netPotential;
@@ -100,7 +98,6 @@ int main() {
         
         positionFile << N << "\n \n";
         // debug << "Time: " << i << "\n";
-
 
         for (int j = 0; j < N; ++j) { // Write positions to xyz file
             positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
@@ -121,7 +118,6 @@ int main() {
             }
         }
         
-
         netPotential = calcForces(atomList); // Update accelerations and return potential of system
 
         totalVelSquared = 0;
@@ -137,7 +133,7 @@ int main() {
         }
 
         if (i > numTimeSteps / 2) { // Record energies to arrays and file
-            energyFile << "Time: " << i << "\n";
+            // energyFile << "Time: " << i << "\n";
             
             double netKE = .5 * MASS * totalVelSquared;
 
@@ -177,12 +173,23 @@ int main() {
     energyFile.close();
 
     std::cout << "Finding radial distribution \n";
-    radialDistribution();
+    // radialDistribution(); // Comment out to reduce runtime
     clock_t z = clock();
     double t = double(z - a) / (double)CLOCKS_PER_SEC;
     std::cout << "Time elapsed: \n";
     std::cout << t << " seconds \n";
     std::cout << t / 60 << " minutes" << std::endl;
+
+    std::vector<int> arr; // Vector to iterate through for graphing purposes
+    arr.reserve(4999);
+    for (int i = 0; i < 4999; i++) {
+        arr.push_back(5000 + i);
+    }
+
+    for (int i = 0; i < arr.size(); i++) { // Graph potential, kinetic, and total energy plot
+        plt::plot(arr, KE, "b-", arr, PE, "r-", arr, netE, "g-");
+    }
+    plt::show();
 
     return 0;
 }
