@@ -11,10 +11,12 @@
 #include <fstream>
 #include <string>
 #include <array>
+/**
 #include "matplotlibcpp.h"
 #include "Python.h"
 namespace plt = matplotlibcpp;
-// If using graphing function, g++ moldy.cpp -I/usr/include/python3.10 -lpython3.10 -Ofast otherwise comment it out
+*/
+// If using graphing function, g++ moldy.cpp -I/usr/include/python3.10 -lpython3.10 -O2 otherwise comment it out
 
 class Atom {
 public:
@@ -27,6 +29,7 @@ public:
         positions[0] = x;
         positions[1] = y;
         positions[2] = z;
+        
     }
 };
 
@@ -41,11 +44,11 @@ const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
 
-const double rhostar = 1.1; // Dimensionless density of gas
+const double rhostar = .6; // Dimensionless density of gas
 const double rho = rhostar / std::pow(SIGMA, 3); // Density of gas
 const double L = std::cbrt(N / rho); // Unit cell length
 const double rCutoff = SIGMA * 2.5; // Forces are negligible past this distance, not worth calculating
-const double tStar = 2.6; // Reduced units of temperature
+const double tStar = 1.24; // Reduced units of temperature
 const double TARGET_TEMP = tStar * EPS_STAR;
 // 39.9 is mass of argon in amu, 10 is a conversion between the missing units :)
 const double MASS = 39.9 * 10 / Na / Kb; // Kelvin * ps^2 / A^2
@@ -53,14 +56,14 @@ const double timeStep = dt_star * std::sqrt(MASS * SIGMA * SIGMA / EPS_STAR); //
 
 double dot(double x, double y, double z);
 void thermostat(std::vector<Atom> &atomList);
-double calcForces(std::vector<Atom> &atomList);
+double calcForces(std::vector<Atom> &atomList, std::ofstream &debug);
 std::vector<Atom> faceCenteredCell();
 std::vector<Atom> simpleCubicCell();
 void radialDistribution();
 
 int main() {
     std::ofstream positionFile("out.xyz");
-    std::ofstream debug("debug.dat");
+    std::ofstream debug("debugmoldy.dat");
     std::ofstream energyFile("Energy.dat");
 
     // Arrays to hold energy values at each step of the process
@@ -69,7 +72,7 @@ int main() {
     std::vector<double> netE;
 
     std::random_device rd;
-    std::default_random_engine generator(rd());
+    std::default_random_engine generator(3); // (rd())
     std::uniform_real_distribution<double> distribution(-1.0, 1.0);
 
     std::vector<Atom> atomList = faceCenteredCell();
@@ -97,17 +100,18 @@ int main() {
         }
         
         positionFile << N << "\n \n";
-        // debug << "Time: " << i << "\n";
+        debug << "Time: " << i << "\n";
 
         for (int j = 0; j < N; ++j) { // Write positions to xyz file
             positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
 
-            // debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-            // debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
-            // debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
-            // debug << "- \n";
+            debug << "Atom number: " << j << "\n";
+            debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
+            debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
+            debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
+            debug << "- \n";
         }
-        // debug << "------------------------------------------------- \n";
+        debug << "------------------------------------------------- \n";
 
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
@@ -118,7 +122,7 @@ int main() {
             }
         }
         
-        netPotential = calcForces(atomList); // Update accelerations and return potential of system
+        netPotential = calcForces(atomList, debug); // Update accelerations and return potential of system
 
         totalVelSquared = 0;
         for (int k = 0; k < N; ++k) { // Update velocities
@@ -173,7 +177,7 @@ int main() {
     energyFile.close();
 
     std::cout << "Finding radial distribution \n";
-    // radialDistribution(); // Comment out to reduce runtime
+    radialDistribution(); // Comment out to reduce runtime
     clock_t z = clock();
     double t = double(z - a) / (double)CLOCKS_PER_SEC;
     std::cout << "Time elapsed: \n";
@@ -186,10 +190,12 @@ int main() {
         arr.push_back(5000 + i);
     }
 
+    /**
     for (int i = 0; i < arr.size(); i++) { // Graph potential, kinetic, and total energy plot
         plt::plot(arr, KE, "b-", arr, PE, "r-", arr, netE, "g-");
     }
     plt::show();
+    */
 
     return 0;
 }
@@ -212,11 +218,11 @@ void thermostat(std::vector<Atom> &atomList) {
     }
 }
 
-double calcForces(std::vector<Atom> &atomList) {
+double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) {
 
     double netPotential = 0;
 
-    for (int j = 0; j < N; j++) { // Set all accelerations in every atom equao to zero
+    for (int j = 0; j < N; j++) { // Set all accelerations in every atom equal to zero
         for (int i = 0; i < 3; ++i) {
             atomList[j].accelerations[i] = 0;
         }
@@ -236,13 +242,14 @@ double calcForces(std::vector<Atom> &atomList) {
             double r2 = dot(distArr[0], distArr[1], distArr[2]);
             double r = std::sqrt(r2); // Magnitude of distance between the atoms
 
-            if (r <= rCutoff) { // Only calculate forces if atoms are within a certain distance
+            if (r < rCutoff) { // Only calculate forces if atoms are within a certain distance
                 double sor = SIGMA / r; // SIGMA over r
                 double sor6 = std::pow(sor, 6);
                 double sor12 = sor6 * sor6;
 
                 double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
                 netPotential += 4 * EPS_STAR * (sor12 - sor6);
+                debug << i << " on " << j << ": " << forceOverR << "\n";
 
                 for (int k = 0; k < 3; ++k) {
                     // force divided by radius divided by the magnitude of the distance vector in direction k
