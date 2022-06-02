@@ -40,7 +40,7 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 10000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 256; // Number of atoms in simulation
+const int N = 13500; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -95,6 +95,7 @@ int main() {
     std::cout << "Starting program \n";
     double count = .05;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
+        std::cout << i << "\n";
         if (i > count * numTimeSteps) { // Percent progress
             std::cout << count * 100 << " % \n";
             count += .05;
@@ -105,7 +106,6 @@ int main() {
 
         for (int j = 0; j < N; ++j) { // Write positions to xyz file
             positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-
             //debug << "Atom number: " << j << "\n";
             //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
             //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
@@ -219,12 +219,13 @@ void thermostat(std::vector<Atom> &atomList) {
 double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell pairs method to calculate forces
 
     double netPotential = 0;
-    const int numCellsPerDirection = 3;
+    const int targetCellLength = rCutoff;
+    const int numCellsPerDirection = std::floor(L / targetCellLength);
     double cellLength = L / numCellsPerDirection; // Side length of each cell
-    const int numCellsYZ = numCellsPerDirection * numCellsPerDirection; // Number of cells in one plane
+    int numCellsYZ = numCellsPerDirection * numCellsPerDirection; // Number of cells in one plane
     const int numCellsXYZ = numCellsYZ * numCellsPerDirection; // Number of cells in the simulation
     std::array<int, N> pointerArr; // Array pointing to the next lowest atom in the cell
-    std::array<int, numCellsXYZ> header; // Array pointing at the highest numbered atom in each cell
+    int header[numCellsXYZ]; // Array pointing at the highest numbered atom in each cell
     std::array<int, 3> mc; // Array to keep track of coordinates of a cell
     std::array<int, 3> mc1; // Array to keep track of the coordinates of a neighboring cell
     std::array<int, 3> shiftedNeighbor; // Boundary conditions
@@ -246,20 +247,8 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
         for (int j = 0; j < 3; j++) { // Find the coordinates of a cell an atom belongs to
             mc[j] = atomList[i].positions[j] / cellLength;
         }
-
         // Turn coordinates of cell into a cell index for the header array
         c = mc[0] * numCellsYZ + mc[1] * numCellsPerDirection + mc[2];
-
-        /*
-        if (c < 0 or c > numCellsXYZ) {
-            std::cerr << "c is " << c << std::endl;
-            std::cerr << "mc[0] is " << mc[0] << std::endl;
-            std::cerr << "mc[1] is " << mc[1] << std::endl;
-            std::cerr << "mc[2] is " << mc[2] << std::endl;
-            exit(-1);
-        }
-         */
-
         // Link current atom to previous occupant
         pointerArr[i] = header[c];
         // Current atom is the highest in its cell, so it goes in the header
@@ -294,7 +283,6 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
 
                             int i = header[c]; // Find the highest numbered atom in each cell
                             double r2; // Dot product between two atoms
-                            double r; // Distance vector between two atoms
                             while (i > -1) {
                                 int j = header[c1]; // Scan atom with the largest index in neighboring cell c1
                                 while (j > -1) {
@@ -305,11 +293,10 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
                                             distArr[k] = distArr[k] - L * std::round(distArr[k] / L);
                                         }
                                         r2 = dot(distArr[0], distArr[1], distArr[2]);
-                                        r = std::sqrt(r2);
-                                        if (r < rCutoff) {
-                                            double sor = SIGMA / r;
-                                            double sor6 = std::pow(sor, 6);
-                                            double sor12 = sor6 * sor6;
+                                        if (r2 < rCutoffSquared) {
+                                            double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
+                                            double sor6 = std::pow(s2or2, 3); // Sigma over r to the sixth
+                                            double sor12 = sor6 * sor6; // Sigma over r to the twelfth
 
                                             double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
                                             netPotential += 4 * EPS_STAR * (sor12 - sor6);
