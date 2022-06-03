@@ -18,7 +18,7 @@ namespace plt = matplotlibcpp;
 */
 // If using graphing function, g++ moldy.cpp -I/usr/include/python3.10 -lpython3.10 -O2 otherwise comment it out
 
-class Atom {
+struct Atom {
 public:
     double positions[3];
     double velocities[3];
@@ -133,7 +133,7 @@ int main() {
             }
         }
 
-        if (i < numTimeSteps / 2 && i != 0 && i % 5 == 0) { // Apply velocity modifications for first half of sample
+        if (i < numTimeSteps / 2 && i % 5 == 0) { // Apply velocity modifications for first half of sample
             thermostat(atomList);
         }
 

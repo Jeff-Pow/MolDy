@@ -18,7 +18,7 @@ namespace plt = matplotlibcpp;
 // If using graphing function, g++ moldy.cpp -I/usr/include/python3.10 -lpython3.10 -O2 otherwise comment it out
 */
 
-class Atom {
+struct Atom {
 public:
     std::array<double, 3> positions;
     std::array<double, 3> velocities;
@@ -117,7 +117,7 @@ int main() {
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
                 atomList[k].positions[j] += atomList[k].velocities[j] * timeStep 
-                        + .5 * atomList[k].accelerations[j] * timeStep * timeStep;
+                    + .5 * atomList[k].accelerations[j] * timeStep * timeStep;
                 atomList[k].positions[j] += -L * std::floor(atomList[k].positions[j] / L); // Keep atom inside box
                 atomList[k].oldAccelerations[j] = atomList[k].accelerations[j];
             }
@@ -133,7 +133,7 @@ int main() {
             }
         }
 
-        if (i < numTimeSteps / 2 && i != 0 && i % 5 == 0) { // Apply velocity modifications for first half of sample
+        if (i < numTimeSteps / 2 && i % 5 == 0) { // Apply velocity modifications for first half of sample
             thermostat(atomList);
         }
 
