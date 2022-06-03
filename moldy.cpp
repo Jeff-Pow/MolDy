@@ -48,6 +48,7 @@ const double rhostar = .6; // Dimensionless density of gas
 const double rho = rhostar / std::pow(SIGMA, 3); // Density of gas
 const double L = std::cbrt(N / rho); // Unit cell length
 const double rCutoff = SIGMA * 2.5; // Forces are negligible past this distance, not worth calculating
+const double rCutoffSquared = rCutoff * rCutoff;
 const double tStar = 1.24; // Reduced units of temperature
 const double TARGET_TEMP = tStar * EPS_STAR;
 // 39.9 is mass of argon in amu, 10 is a conversion between the missing units :)
@@ -91,12 +92,12 @@ int main() {
     clock_t a = clock();
 
     std::cout << "Starting program \n";
-    double count = .05;
+    double count = .01;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
 
         if (i > count * numTimeSteps) { // Percent progress
             std::cout << count * 100 << " % \n";
-            count += .05;
+            count += .01;
         }
         
         positionFile << N << "\n \n";
@@ -240,12 +241,11 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) {
             }
 
             double r2 = dot(distArr[0], distArr[1], distArr[2]);
-            double r = std::sqrt(r2); // Magnitude of distance between the atoms
 
-            if (r < rCutoff) { // Only calculate forces if atoms are within a certain distance
-                double sor = SIGMA / r; // SIGMA over r
-                double sor6 = std::pow(sor, 6);
-                double sor12 = sor6 * sor6;
+            if (r2 < rCutoffSquared) { // Only calculate forces if atoms are within a certain distance
+                double s2or2 = SIGMA * SIGMA / r2; // SIGMA squared over r squared
+                double sor6 = std::pow(s2or2, 3); // (SIGMA / r) to the sixth
+                double sor12 = sor6 * sor6; // (SIGMA / r) to the twelfth
 
                 double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
                 netPotential += 4 * EPS_STAR * (sor12 - sor6);

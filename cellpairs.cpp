@@ -40,7 +40,7 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 10000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 13500; // Number of atoms in simulation
+const int N = 256; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -93,12 +93,12 @@ int main() {
     clock_t a = clock();
 
     std::cout << "Starting program \n";
-    double count = .05;
+    double count = .01;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
-        std::cout << i << "\n";
+
         if (i > count * numTimeSteps) { // Percent progress
             std::cout << count * 100 << " % \n";
-            count += .05;
+            count += .01;
         }
         
         positionFile << N << "\nTime: " << i << "\n";
