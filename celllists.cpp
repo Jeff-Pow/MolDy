@@ -105,6 +105,7 @@ int main() {
     clock_t begin = clock();
 
     std::cout << "Starting program \n";
+    std::cout << "Cells per direction: " << numCellsPerDirection << std::endl;
     double count = .01;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
 
@@ -228,18 +229,18 @@ void thermostat(std::vector<Atom>& atomList) {
     }
 }
 
-double calcForcesToNeighbors(std::array<int, 3> cell, std::vector<Atom>& atomList) {
+double calcForcesToNeighbors(int celli, int cellj, int cellk, std::vector<Atom>& atomList) {
     std::array<int, 3> neighbor; // Array to keep track of the coordinates of a neighboring cell
     std::array<int, 3> shiftedNeighbor; // Boundary conditions
     std::array<double, 3>distArr;
     // Calculate index of the current cell we're working in
-    int cell_index = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
+    int cell_index = celli * numCellsYZ + cellj * numCellsPerDirection + cellk;
     int neighbor_index;
     double netPotential = 0;
     // Scan neighbor cells including the one currently active
-    for (neighbor[0] = cell[0] - 1; neighbor[0] < cell[0] + 2; neighbor[0]++) {
-        for (neighbor[1] = cell[1] - 1; neighbor[1] < cell[1] + 2; neighbor[1]++) {
-            for (neighbor[2] = cell[2] - 1; neighbor[2] < cell[2] + 2; neighbor[2]++) {
+    for (neighbor[0] = celli - 1; neighbor[0] < celli + 2; neighbor[0]++) {
+        for (neighbor[1] = cellj - 1; neighbor[1] < cellj + 2; neighbor[1]++) {
+            for (neighbor[2] = cellk - 1; neighbor[2] < cellk + 2; neighbor[2]++) {
 
                 for (int k = 0; k < 3; k++) { // Boundary conditions
                     if (neighbor[k] < 0) {
@@ -294,6 +295,16 @@ double calcForcesToNeighbors(std::array<int, 3> cell, std::vector<Atom>& atomLis
     return netPotential;
 }
 
+double calcForcesForSlice(int i, std::vector<Atom> &atoms) {
+    double addedPotentials = 0;
+    for (int j = 0; j < numCellsPerDirection; j++) {
+        for (int k = 0; k < numCellsPerDirection; k++) {
+            addedPotentials += calcForcesToNeighbors(i, j, k, atoms);
+        }
+    }
+    return addedPotentials;
+}
+
 double calcForces(std::vector<Atom>& atomList, std::ofstream& debug) { // Cell pairs method to calculate forces
 
     double netPotential = 0;
@@ -321,15 +332,12 @@ double calcForces(std::vector<Atom>& atomList, std::ofstream& debug) { // Cell p
         header[cell_index] = i;
     }
 
-
-    for (cell[0] = 0; cell[0] < numCellsPerDirection; (cell[0])++) { // Calculate coordinates of a cell to work in
-        for (cell[1] = 0; cell[1] < numCellsPerDirection; (cell[1])++) {
-            std::future<double> addedPotentials[3];
-            for (cell[2] = 0; cell[2] < numCellsPerDirection; (cell[2])++) {
-                addedPotentials[cell[2]] = std::async(std::launch::async, calcForcesToNeighbors, cell, std::ref(atomList));
-            }
-            for (int z = 0; z < 3; z++) { netPotential += addedPotentials[z].get(); }
-        }
+    std::future<double> addedPotentials[numCellsPerDirection];
+    for (int i = 0; i < numCellsPerDirection; i++) {
+        addedPotentials[i] = std::async(std::launch::async, calcForcesForSlice, i, std::ref(atomList)); 
+    }
+    for (int i = 0; i < numCellsPerDirection; i++) {
+        netPotential += addedPotentials[i].get();
     }
     return netPotential;
 }
