@@ -11,6 +11,7 @@
 #include <fstream>
 #include <string>
 #include <array>
+#include <thread>
 /*
 #include "matplotlibcpp.h"
 #include "Python.h"
@@ -62,6 +63,11 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug);
 std::vector<Atom> faceCenteredCell();
 std::vector<Atom> simpleCubicCell();
 void radialDistribution();
+
+
+std::thread t1;
+std::thread t2;
+std::thread t3;
 
 int main() {
     std::ofstream positionFile("out.xyz");
