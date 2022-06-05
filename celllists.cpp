@@ -11,7 +11,7 @@
 #include <fstream>
 #include <string>
 #include <array>
-/**
+/*
 #include "matplotlibcpp.h"
 #include "Python.h"
 namespace plt = matplotlibcpp;
@@ -74,7 +74,7 @@ int main() {
     std::vector<double> netE;
 
     std::random_device rd;
-    std::default_random_engine generator(3); // (rd())
+    std::default_random_engine generator(rd()); // (rd())
     std::uniform_real_distribution<double> distribution(-1.0, 1.0);
 
     std::vector<Atom> atomList = faceCenteredCell();
@@ -96,7 +96,7 @@ int main() {
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
 
         if (i > count * numTimeSteps) { // Percent progress
-            std::cout << count * 100 << " % \n";
+            std::cout << count * 100 << "% \n";
             count += .01;
         }
         
@@ -182,17 +182,18 @@ int main() {
     std::cout << t << " seconds \n";
     std::cout << t / 60 << " minutes" << std::endl;
 
-    /** Energy plotting block
-   std::vector<int> arr; // Vector to iterate through for graphing purposes
-   arr.reserve(4999);
-   for (int i = 0; i < 4999; i++) {
-       arr.push_back(5000 + i);
-   }
-   for (int i = 0; i < arr.size(); i++) { // Graph potential, kinetic, and total energy plot
-       plt::plot(arr, KE, "b-", arr, PE, "r-", arr, netE, "g-");
-   }
-   plt::show();
-   */
+    /*
+    // Energy plotting block
+    std::vector<int> arr; // Vector to iterate through for graphing purposes
+    arr.reserve(4999);
+    for (int i = 0; i < 4999; i++) {
+           arr.push_back(5000 + i);
+    }
+    for (int i = 0; i < arr.size(); i++) { // Graph potential, kinetic, and total energy plot
+        plt::plot(arr, KE, "b-", arr, PE, "r-", arr, netE, "g-");
+    }
+    plt::show();
+    */
 
     return 0;
 }
@@ -218,7 +219,7 @@ void thermostat(std::vector<Atom> &atomList) {
 double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell pairs method to calculate forces
 
     double netPotential = 0;
-    const int targetCellLength = rCutoff;
+    const double targetCellLength = rCutoff;
     const int numCellsPerDirection = std::floor(L / targetCellLength);
     double cellLength = L / numCellsPerDirection; // Side length of each cell
     int numCellsYZ = numCellsPerDirection * numCellsPerDirection; // Number of cells in one plane
@@ -253,7 +254,6 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
         // Current atom is the highest in its cell, so it goes in the header
         header[c] = i;
     }
-
 
     for (mc[0] = 0; mc[0] < numCellsPerDirection; (mc[0])++) { // Calculate coordinates of a cell to work in
         for (mc[1] = 0; mc[1] <  numCellsPerDirection; (mc[1])++) {

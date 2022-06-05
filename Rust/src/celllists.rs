@@ -165,6 +165,8 @@ fn calc_forces(atoms: &mut Vec<Atom>) -> f64 {
     let mut mc1: [f64, 3];
     let mut neighbor: [i32, 3];
     let mut distArr: [f64, 3];
+    let c: i32;
+    let c1: i32;
 
 
     for atom in atoms.iter_mut() {
@@ -184,6 +186,29 @@ fn calc_forces(atoms: &mut Vec<Atom>) -> f64 {
         c = mc[0] * cellsyz + mc[1] * cells_per_side + mc[2];
         pointer_arr[i as usize] = header[c as usize];
         header[c as usize] = i;
+    }
+
+    for i in 0..cells_per_side {
+        for j in 0..cells_per_side {
+            for k in 0..cells_per_side {
+                mc[0] = i;
+                mc[1] = k;
+                mc[2] = j;
+                c = mc[0] * cellsxy + mc[1] * cells_per_direction + mc[2];
+                
+                for l in i - 1..i + 2 {
+                    for m in j - 1..j + 2 {
+                        for n in k - 1..k + 2 {
+                            
+                            for o in 0..3 {
+                                if l < 0 {
+                                    
+                                }
+                            }    
+                        }
+                    }
+                }
+        }
     }
 
 
