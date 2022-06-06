@@ -270,21 +270,23 @@ double calcForcesToNeighbors(int celli, int cellj, int cellk, std::vector<Atom>&
                             double r2 = dot(distArr[0], distArr[1], distArr[2]); // Dot of distance vector between the two atoms
                             if (r2 < rCutoffSquared) {
                                 double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
-                                double sor6 = std::pow(s2or2, 3); // Sigma over r to the sixth
+                                double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
                                 double sor12 = sor6 * sor6; // Sigma over r to the twelfth
 
                                 double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
                                 netPotential += 4 * EPS_STAR * (sor12 - sor6);
                                 // debug << i << " on " << j << ": " << forceOverR << "\n";
 
-                                mutexArr[i].lock();
-                                mutexArr[j].lock();
+                                //mutexArr[i].lock();
+                                //mutexArr[j].lock();
+                                update_accels_mutex.lock();
                                 for (int k = 0; k < 3; k++) {
                                     atomList[i].accelerations[k] += distArr[k] * forceOverR / MASS;
                                     atomList[j].accelerations[k] -= distArr[k] * forceOverR / MASS;
                                 }
-                                mutexArr[i].unlock();
-                                mutexArr[j].unlock();
+                                update_accels_mutex.unlock();
+                                //mutexArr[i].unlock();
+                                //mutexArr[j].unlock();
                             }
                         }
                         j = pointerArr[j];
