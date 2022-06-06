@@ -42,7 +42,7 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 10000; // Parameters to change for simulation
 const double dt_star = .001;
 
-const int N = 256; // Number of atoms in simulation
+const int N = 2916; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -65,6 +65,7 @@ const int numCellsYZ = numCellsPerDirection * numCellsPerDirection; // Number of
 const int numCellsXYZ = numCellsYZ * numCellsPerDirection; // Number of cells in the simulation
 
 std::mutex update_accels_mutex;
+std::array<std::mutex, N> mutexArr;
 
 double dot(double x, double y, double z);
 void thermostat(std::vector<Atom>& atomList);
@@ -276,13 +277,14 @@ double calcForcesToNeighbors(int celli, int cellj, int cellk, std::vector<Atom>&
                                 netPotential += 4 * EPS_STAR * (sor12 - sor6);
                                 // debug << i << " on " << j << ": " << forceOverR << "\n";
 
-                                double accelFactor = forceOverR / MASS;
-                                update_accels_mutex.lock();
+                                mutexArr[i].lock();
+                                mutexArr[j].lock();
                                 for (int k = 0; k < 3; k++) {
-                                    atomList[i].accelerations[k] += distArr[k] * accelFactor;
-                                    atomList[j].accelerations[k] -= distArr[k] * accelFactor;
+                                    atomList[i].accelerations[k] += distArr[k] * forceOverR / MASS;
+                                    atomList[j].accelerations[k] -= distArr[k] * forceOverR / MASS;
                                 }
-                                update_accels_mutex.unlock();
+                                mutexArr[i].unlock();
+                                mutexArr[j].unlock();
                             }
                         }
                         j = pointerArr[j];
