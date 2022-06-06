@@ -244,7 +244,7 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) {
 
             if (r2 < rCutoffSquared) { // Only calculate forces if atoms are within a certain distance
                 double s2or2 = SIGMA * SIGMA / r2; // SIGMA squared over r squared
-                double sor6 = std::pow(s2or2, 3); // (SIGMA / r) to the sixth
+                double sor6 = s2or2 * s2or2 * s2or2; // (SIGMA / r) to the sixth
                 double sor12 = sor6 * sor6; // (SIGMA / r) to the twelfth
 
                 double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);

@@ -37,10 +37,10 @@ public:
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 10000; // Parameters to change for simulation
+const int numTimeSteps = 1000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 202612; // Number of atoms in simulation
+const int N = 256; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -294,7 +294,7 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
                                         r2 = dot(distArr[0], distArr[1], distArr[2]); // Dot of distance vector between the two atoms
                                         if (r2 < rCutoffSquared) {
                                             double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
-                                            double sor6 = std::pow(s2or2, 3); // Sigma over r to the sixth
+                                            double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
                                             double sor12 = sor6 * sor6; // Sigma over r to the twelfth
 
                                             double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
