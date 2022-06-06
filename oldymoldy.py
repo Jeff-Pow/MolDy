@@ -15,11 +15,12 @@ SIGMA = 3.405  # Angstroms
 EPSILON = 1.6540e-21  # Joules
 EPS_STAR = EPSILON / kB # ~119.8 Kelvin
 
-rhostar = .45  # Dimensionless density of gas
-tStar = 1.2 # Reduced units of temperature
+rhostar = .6  # Dimensionless density of gas
+tStar = 1.24 # Reduced units of temperature
 rho = rhostar / (SIGMA ** 3)  # density
 L = ((N / rho) ** (1 / 3))  # unit cell length
 rCutoff = SIGMA * 2.5
+rCutoffSquared = rCutoff * rCutoff
 TARGET_TEMP = tStar * EPS_STAR
 #
 MASS = 39.9 * 10 / Na / kB # K * ps^2 / A^2
@@ -54,13 +55,12 @@ def main():
 
 
         text_file.write("%i \n \n" % N)
-        energyFile.write("Time: {} \n".format(i))
+        #energyFile.write("Time: {} \n".format(i))
 
         for atom in atomList:  # Print locations of all molecules
-
-            energyFile.write("Positions: %f %f %f\n" % tuple(atom.positions))
-            energyFile.write("Velocities: %f %f %f\n" % tuple(atom.velocities))
-            energyFile.write("Accelerations: %f %f %f\n - \n" % tuple(atom.accelerations))
+            #energyFile.write("Positions: %f %f %f\n" % tuple(atom.positions))
+            #energyFile.write("Velocities: %f %f %f\n" % tuple(atom.velocities))
+            #energyFile.write("Accelerations: %f %f %f\n - \n" % tuple(atom.accelerations))
             text_file.write("A %f %f %f\n" % tuple(atom.positions))
 
 
@@ -82,17 +82,17 @@ def main():
             thermostat(atomList, TARGET_TEMP)
 
         if i > numTimeSteps / 2:
-            conserved.write("Time: {} \n".format(i))
+            # conserved.write("Time: {} \n".format(i))
 
             netKE = .5 * MASS * totalVelSquared
 
-            conserved.write("KE: {} \n".format(netKE))
+            # conserved.write("KE: {} \n".format(netKE))
             KE.append(netKE)
-            conserved.write("PE: {} \n".format(netPotential))
+            # conserved.write("PE: {} \n".format(netPotential))
             PE.append(netPotential)
-            conserved.write("Total energy: {} \n".format(netPotential + netKE))
+            # conserved.write("Total energy: {} \n".format(netPotential + netKE))
             netE.append(netPotential + netKE)
-            conserved.write("------------------------------------ \n")
+            # conserved.write("------------------------------------ \n")
 
     T = (time.time() - currTime) 
     print("Time elapsed: \n {} sec \n".format(T))
@@ -139,18 +139,19 @@ def calcForces(atomList, energyFile):
             distArr = np.zeros(3)  # Position of an atom relative to another atom
             distArr = atomList[i].positions - atomList[j].positions
             # Boundary conditions - Interact through walls if closer
-            distArr = distArr - L * np.round(distArr / L)
+            distArr -= L * np.round(distArr / L)
 
             dot = np.dot(distArr, distArr)
-            r = np.sqrt(dot)  # Distance vector magnitude
 
-            if r <= rCutoff:
-                sor = SIGMA / r # sor = sigma over r
+            if dot < rCutoffSquared:
+                s2or2 = SIGMA * SIGMA / dot
+                sor6 = s2or2 * s2or2 * s2or2
+                sor12 = sor6 * sor6
 
-                force_over_r = 24 * EPS_STAR / dot * ((2 * sor ** 12 - sor ** 6))
-                netPotential += 4 * EPS_STAR * (sor ** 12 - sor ** 6)
+                force_over_r = 24 * EPS_STAR / dot * ((2 * sor12 - sor6))
+                netPotential += 4 * EPS_STAR * (sor12 - sor6)
 
-                energyFile.write("{} on {}: {} \n".format(i, j, force_over_r * r))
+                # energyFile.write("{} on {}: {} \n".format(i, j, force_over_r * r))
                 # energyFile.write("----------------- \n")
                 atomList[i].accelerations += (force_over_r * distArr / MASS)
                 atomList[j].accelerations -= (force_over_r * distArr / MASS)
