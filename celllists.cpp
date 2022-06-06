@@ -40,7 +40,7 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 1000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 2916; // Number of atoms in simulation
+const int N = 13500; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -74,7 +74,7 @@ int main() {
     std::vector<double> netE;
 
     std::random_device rd;
-    std::default_random_engine generator(rd()); // (rd())
+    std::default_random_engine generator(3); // (rd())
     std::uniform_real_distribution<double> distribution(-1.0, 1.0);
 
     std::vector<Atom> atomList = faceCenteredCell();
@@ -267,6 +267,7 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
                         for (mc1[2] = mc[2] - 1; mc1[2] < mc[2] + 2; mc1[2]++) {
 
                             for (int k = 0; k < 3; k++) { // Boundary conditions
+                                /*
                                 if (mc1[k] < 0) {
                                     shiftedNeighbor[k] = mc1[k] + numCellsPerDirection;
                                 }
@@ -276,6 +277,8 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
                                 else {
                                     shiftedNeighbor[k] = mc1[k];
                                 }
+                                */
+                                shiftedNeighbor[k] = (mc1[k] + numCellsPerDirection) % numCellsPerDirection;
                             }
                             // Scalar index of neighboring cell
                             c1 = shiftedNeighbor[0] * numCellsYZ + shiftedNeighbor[1] * numCellsPerDirection + shiftedNeighbor[2];
