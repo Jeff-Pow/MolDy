@@ -277,16 +277,16 @@ double calcForcesToNeighbors(int celli, int cellj, int cellk, std::vector<Atom>&
                                 netPotential += 4 * EPS_STAR * (sor12 - sor6);
                                 // debug << i << " on " << j << ": " << forceOverR << "\n";
 
-                                //mutexArr[i].lock();
-                                //mutexArr[j].lock();
-                                update_accels_mutex.lock();
+                                mutexArr[i].lock();
+                                mutexArr[j].lock();
+                                //update_accels_mutex.lock();
                                 for (int k = 0; k < 3; k++) {
                                     atomList[i].accelerations[k] += distArr[k] * forceOverR / MASS;
                                     atomList[j].accelerations[k] -= distArr[k] * forceOverR / MASS;
                                 }
-                                update_accels_mutex.unlock();
-                                //mutexArr[i].unlock();
-                                //mutexArr[j].unlock();
+                                //update_accels_mutex.unlock();
+                                mutexArr[i].unlock();
+                                mutexArr[j].unlock();
                             }
                         }
                         j = pointerArr[j];
