@@ -37,10 +37,10 @@ public:
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 1000; // Parameters to change for simulation
+const int numTimeSteps = 10000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 13500; // Number of atoms in simulation
+const int N = 4000; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -267,17 +267,6 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
                         for (mc1[2] = mc[2] - 1; mc1[2] < mc[2] + 2; mc1[2]++) {
 
                             for (int k = 0; k < 3; k++) { // Boundary conditions
-                                /*
-                                if (mc1[k] < 0) {
-                                    shiftedNeighbor[k] = mc1[k] + numCellsPerDirection;
-                                }
-                                else if (mc1[k] >= numCellsPerDirection) {
-                                    shiftedNeighbor[k] = mc1[k] - numCellsPerDirection;
-                                }
-                                else {
-                                    shiftedNeighbor[k] = mc1[k];
-                                }
-                                */
                                 shiftedNeighbor[k] = (mc1[k] + numCellsPerDirection) % numCellsPerDirection;
                             }
                             // Scalar index of neighboring cell

@@ -229,30 +229,21 @@ void thermostat(std::vector<Atom> &atomList) {
     }
 }
 
-double calcForcesOnCell(std::array<int, 3> mc, std::vector<Atom> &atomList) {
+double calcForcesOnCell(int x, int y, int z, std::vector<Atom> &atomList) {
     // Calculate index of the current cell we're working in
-    int c = mc[0] * numCellsYZ + mc[1] * numCellsPerDirection + mc[2];
+    int c = x * numCellsYZ + y * numCellsPerDirection + z;
     std::array<int, 3> mc1; // Array to keep track of neighboring cells
-    std::array<int, 3> distArr; //
+    std::array<double, 3> distArr; //
     std::array<int, 3> shiftedNeighbor; // Boundary conditions
     double netPotential = 0;
 
     // Scan neighbor cells including the one currently active
-    for (mc1[0] = mc[0] - 1; mc1[0] < mc[0] + 2; mc1[0]++) {
-        for (mc1[1] = mc[1] - 1; mc1[1] < mc[1] + 2; mc1[1]++) {
-            for (mc1[2] = mc[2] - 1; mc1[2] < mc[2] + 2; mc1[2]++) {
+    for (mc1[0] = x - 1; mc1[0] < x + 2; mc1[0]++) {
+        for (mc1[1] = y - 1; mc1[1] < y + 2; mc1[1]++) {
+            for (mc1[2] = z - 1; mc1[2] < z + 2; mc1[2]++) {
 
                 for (int k = 0; k < 3; k++) { // Boundary conditions
-                    // shiftedNeighbor[k] = (mc1[k] + numCellsPerDirection) % numCellsPerDirection;
-                    if (mc1[k] < 0) {
-                        shiftedNeighbor[k] = mc1[k] + numCellsPerDirection;
-                    }
-                    else if (mc1[k] >= numCellsPerDirection) {
-                        shiftedNeighbor[k] = mc1[k] - numCellsPerDirection;
-                    }
-                    else {
-                        shiftedNeighbor[k] = mc1[k];
-                    }
+                    shiftedNeighbor[k] = (mc1[k] + numCellsPerDirection) % numCellsPerDirection;
                 }
                 // Scalar index of neighboring cell
                 int c1 = shiftedNeighbor[0] * numCellsYZ + shiftedNeighbor[1] * numCellsPerDirection + shiftedNeighbor[2];
@@ -316,9 +307,6 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
         }
         // Turn coordinates of cell into a cell index for the header array
         c = mc[0] * numCellsYZ + mc[1] * numCellsPerDirection + mc[2];
-        if (c < 0 || c > numCellsXYZ) {
-            std::cerr << "It broked!\n";
-        }
         // Link current atom to previous occupant
         pointerArr[i] = header[c];
         // Current atom is the highest in its cell, so it goes in the header
@@ -328,7 +316,7 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
     for (mc[0] = 0; mc[0] < numCellsPerDirection; (mc[0])++) { // Calculate coordinates of a cell to work in
         for (mc[1] = 0; mc[1] <  numCellsPerDirection; (mc[1])++) {
             for (mc[2] = 0; mc[2] < numCellsPerDirection; (mc[2])++) {
-                netPotential += calcForcesOnCell(mc, atomList);
+                netPotential += calcForcesOnCell(mc[0], mc[1], mc[2], atomList);
             }
         }
     }
