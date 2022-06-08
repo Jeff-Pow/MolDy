@@ -12,7 +12,8 @@
 #include <string>
 #include <array>
 #include <thread>
-#include <mutex>
+#include "BS_thread_pool.hpp"
+
 /*
 #include "matplotlibcpp.h"
 #include "Python.h"
@@ -42,7 +43,7 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 10000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 256; // Number of atoms in simulation
+const int N = 108000; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -65,7 +66,7 @@ std::vector<Atom> faceCenteredCell();
 std::vector<Atom> simpleCubicCell();
 void radialDistribution();
 
-std::array<std::thread, 7> threads;
+BS::thread_pool pool;
 
 const double targetCellLength = rCutoff;
 const int numCellsPerDirection = std::floor(L / targetCellLength);
@@ -229,18 +230,17 @@ void thermostat(std::vector<Atom> &atomList) {
     }
 }
 
-double calcForcesOnCell(int x, int y, int z, std::vector<Atom> &atomList) {
-    // Calculate index of the current cell we're working in
-    int c = x * numCellsYZ + y * numCellsPerDirection + z;
+double calcForcesOnCell(std::array<int, 3> mc, std::vector<Atom> &atomList) {
     std::array<int, 3> mc1; // Array to keep track of neighboring cells
     std::array<double, 3> distArr; //
     std::array<int, 3> shiftedNeighbor; // Boundary conditions
     double netPotential = 0;
+    int c = mc[0] * numCellsYZ + mc[1] * numCellsPerDirection + mc[2];
 
     // Scan neighbor cells including the one currently active
-    for (mc1[0] = x - 1; mc1[0] < x + 2; mc1[0]++) {
-        for (mc1[1] = y - 1; mc1[1] < y + 2; mc1[1]++) {
-            for (mc1[2] = z - 1; mc1[2] < z + 2; mc1[2]++) {
+    for (mc1[0] = mc[0] - 1; mc1[0] < mc[0] + 2; mc1[0]++) {
+        for (mc1[1] = mc[1] - 1; mc1[1] < mc[1] + 2; mc1[1]++) {
+            for (mc1[2] = mc[2] - 1; mc1[2] < mc[2] + 2; mc1[2]++) {
 
                 for (int k = 0; k < 3; k++) { // Boundary conditions
                     shiftedNeighbor[k] = (mc1[k] + numCellsPerDirection) % numCellsPerDirection;
@@ -313,12 +313,19 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
         header[c] = i;
     }
 
-    for (mc[0] = 0; mc[0] < numCellsPerDirection; (mc[0])++) { // Calculate coordinates of a cell to work in
-        for (mc[1] = 0; mc[1] <  numCellsPerDirection; (mc[1])++) {
-            for (mc[2] = 0; mc[2] < numCellsPerDirection; (mc[2])++) {
-                netPotential += calcForcesOnCell(mc[0], mc[1], mc[2], atomList);
+    BS::thread_pool test;
+    std::future<double> potentialArr[numCellsXYZ];
+    for (mc[0] = 0; mc[0] < numCellsPerDirection; mc[0]++) { // Calculate coordinates of a cell to work in
+        for (mc[1] = 0; mc[1] <  numCellsPerDirection; mc[1]++) {
+            for (mc[2] = 0; mc[2] < numCellsPerDirection; mc[2]++) {
+                // Calculate index of the current cell we're working in
+                int c = mc[0] * numCellsYZ + mc[1] * numCellsPerDirection + mc[2];
+                potentialArr[c] = pool.submit(calcForcesOnCell, mc, std::ref(atomList));
             }
         }
+    }
+    for (int c = 0; c < numCellsXYZ; c++) {
+        netPotential += potentialArr[c].get();
     }
     return netPotential;
 }
