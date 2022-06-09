@@ -313,7 +313,6 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
         header[c] = i;
     }
 
-    BS::thread_pool test;
     std::future<double> potentialArr[numCellsXYZ];
     for  (cell[0] = 0; cell[0] < numCellsPerDirection; cell[0]++) { // Calculate coordinates of a cell to work in
         for  (cell[1] = 0; cell[1] <  numCellsPerDirection; cell[1]++) {
