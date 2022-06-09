@@ -43,7 +43,7 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 10000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 4000; // Number of atoms in simulation
+const int N = 37044; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -108,7 +108,7 @@ int main() {
     std::cout << "Starting program \n";
     double count = .01;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
-
+        std::cout << i << "\n";
         if (i > count * numTimeSteps) { // Percent progress
             std::cout << count * 100 << "% \n";
             count += .01;
@@ -323,7 +323,6 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
             }
         }
     }
-    pool.wait_for_tasks();
     for (int c = 0; c < numCellsXYZ; c++) {
         netPotential += potentialArr[c].get();
     }
