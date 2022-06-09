@@ -342,6 +342,7 @@ double calcForces(std::vector<Atom>& atomList, std::ofstream& debug) { // Cell p
     for (int i = 0; i < numCellsPerDirection; i++) {
         addedPotentials[i] = pool.submit(calcForcesForSlice, i, std::ref(atomList)); 
     }
+    pool.wait_for_tasks();
     for (int i = 0; i < numCellsPerDirection; i++) {
         netPotential += addedPotentials[i].get();
     }
