@@ -11,10 +11,12 @@
 #include <fstream>
 #include <string>
 #include <array>
+/*
 #include "matplotlibcpp.h"
 #include "Python.h"
 namespace plt = matplotlibcpp;
 // If using graphing function, g++ moldy.cpp -I/usr/include/python3.10 -lpython3.10 -O2 otherwise comment it out
+*/
 
 struct Atom {
 public:
@@ -46,29 +48,30 @@ public:
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 10000; // Parameters to change for simulation
+const int numTimeSteps = 100000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 512;
+const int N = 864;
 const double SIGMA_AR = 3.405; // Angstroms
 const double EPSILON_AR = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR_AR = EPSILON_AR / Kb; // ~ 119.8 K
 const double SIGMA_XE = 4.055;
 const double EPS_STAR_XE = 218.18;
 
-const double MIXED_SIGMA = .5 * (SIGMA_AR * SIGMA_XE);
+const double MIXED_SIGMA = .5 * (SIGMA_AR + SIGMA_XE);
 const double MIXED_EPS = std::sqrt(EPS_STAR_AR * EPS_STAR_XE);
 
 const double rhostar = .6; // Dimensionless density of gas
 const double rho = rhostar / std::pow(MIXED_SIGMA, 3); // Density of gas
 const double L = std::cbrt(N / rho); // Unit cell length
-const double rCutoff = .5 * (SIGMA_AR + SIGMA_XE) * 2.5; // Forces are negligible past this distance, not worth calculating
+const double rCutoff = SIGMA_XE * 2.5; // Forces are negligible past this distance, not worth calculating
 const double rCutoffSquared = rCutoff * rCutoff;
 const double tStar = 1.24; // Reduced units of temperature
 const double TARGET_TEMP = tStar * MIXED_EPS;
 // 39.9 is mass of argon in amu, 10 is a conversion between the missing units :)
 const double AR_MASS = 39.9 * 10 / Na / Kb; // Kelvin * ps^2 / A^2
 const double XE_MASS = 131.29 * 10 / Na / Kb;
+const double AVG_MASS = .5 * (AR_MASS + XE_MASS);
 const double timeStep = dt_star * std::sqrt((.5 * (XE_MASS + AR_MASS)) * MIXED_SIGMA * MIXED_SIGMA / MIXED_EPS); // Convert time step to picoseconds
 
 double dot(double x, double y, double z);
@@ -92,7 +95,7 @@ int main() {
     std::default_random_engine generator(3); // (rd())
     std::uniform_real_distribution<double> distribution(-1.0, 1.0);
 
-    std::vector<Atom> atomList = simpleCubicCell();
+    std::vector<Atom> atomList = faceCenteredCell();
 
     for (int i = 0; i < N; ++i) { // Randomize velocities
          for (int j = 0; j < 3; ++j) {
@@ -153,10 +156,7 @@ int main() {
         }
 
         if (i > numTimeSteps / 2) { // Record energies to arrays and file after half of time has passed
-            double netKE = 0;
-            for (int i = 0; i < N; i++) {
-                netKE += .5 * atomList[i].mass * totalVelSquared;
-            }
+            double netKE = .5 * AVG_MASS * totalVelSquared;
             KE.push_back(netKE);
             PE.push_back(netPotential);
             netE.push_back(netPotential + netKE);
@@ -165,6 +165,7 @@ int main() {
             //energyFile << "PE: " << netPotential << "\n";
             //energyFile << "Total energy: " << netPotential + netKE << "\n";
             //energyFile << "------------------------------------------ \n";
+            energyFile << netKE << " , " <<  netPotential << " , " << netPotential + netKE << "\n";
         }
     }
 
@@ -201,6 +202,7 @@ int main() {
     std::cout << t << " seconds \n";
     std::cout << t / 60 << " minutes" << std::endl;
 
+    /*
     // Energy plotting block
     std::vector<int> arr; // Vector to iterate through for graphing purposes
     arr.reserve(4999);
@@ -211,6 +213,7 @@ int main() {
         plt::plot(arr, KE, "b-", arr, PE, "r-", arr, netE, "g-");
     }
     plt::show();
+    */
 
     return 0;
 }
@@ -374,18 +377,16 @@ std::vector<Atom> faceCenteredCell() {
 
     std::vector<Atom> atomList;
 
-/*
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
             for (int k = 0; k < n; k++) {
-                atomList.push_back(Atom(i * dr, j * dr, k * dr));
-                atomList.push_back(Atom(i * dr + dro2, j * dr + dro2, k * dr));
-                atomList.push_back(Atom(i * dr + dro2, j * dr, k * dr + dro2));
-                atomList.push_back(Atom(i * dr, j * dr + dro2, k * dr + dro2));
+                atomList.push_back(Atom(i * dr, j * dr, k * dr, 'A', AR_MASS));
+                atomList.push_back(Atom(i * dr + dro2, j * dr + dro2, k * dr, 'X', XE_MASS));
+                atomList.push_back(Atom(i * dr + dro2, j * dr, k * dr + dro2, 'A', AR_MASS));
+                atomList.push_back(Atom(i * dr, j * dr + dro2, k * dr + dro2, 'X', XE_MASS));
             }
         }
     }
-    */
     return atomList;
 }
 
