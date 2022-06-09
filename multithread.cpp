@@ -315,15 +315,16 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
 
     BS::thread_pool test;
     std::future<double> potentialArr[numCellsXYZ];
-    for  cell[0] = 0; cell[0] < numCellsPerDirection; cell[0]++) { // Calculate coordinates of a cell to work in
-        for  cell[1] = 0; cell[1] <  numCellsPerDirection; cell[1]++) {
-            for  cell[2] = 0; cell[2] < numCellsPerDirection; cell[2]++) {
+    for  (cell[0] = 0; cell[0] < numCellsPerDirection; cell[0]++) { // Calculate coordinates of a cell to work in
+        for  (cell[1] = 0; cell[1] <  numCellsPerDirection; cell[1]++) {
+            for  (cell[2] = 0; cell[2] < numCellsPerDirection; cell[2]++) {
                 // Calculate index of the current cell we're working in
                 int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
                 potentialArr[c] = pool.submit(calcForcesOnCell, cell, std::ref(atomList));
             }
         }
     }
+    pool.wait_for_tasks();
     for (int c = 0; c < numCellsXYZ; c++) {
         netPotential += potentialArr[c].get();
     }
