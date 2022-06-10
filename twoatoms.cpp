@@ -48,7 +48,7 @@ public:
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 100000; // Parameters to change for simulation
+const int numTimeSteps = 1000; // Parameters to change for simulation
 const double dt_star= .001;
 
 const int N = 864;
