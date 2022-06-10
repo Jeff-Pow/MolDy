@@ -40,10 +40,10 @@ public:
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 10000; // Parameters to change for simulation
+const int numTimeSteps = 100; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 37044; // Number of atoms in simulation
+const int N = 470596; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -66,7 +66,7 @@ std::vector<Atom> faceCenteredCell();
 std::vector<Atom> simpleCubicCell();
 void radialDistribution();
 
-BS::thread_pool pool;
+BS::thread_pool pool(1);
 
 const double targetCellLength = rCutoff;
 const int numCellsPerDirection = std::floor(L / targetCellLength);
@@ -108,7 +108,7 @@ int main() {
     std::cout << "Starting program \n";
     double count = .01;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
-        std::cout << i << "\n";
+
         if (i > count * numTimeSteps) { // Percent progress
             std::cout << count * 100 << "% \n";
             count += .01;
