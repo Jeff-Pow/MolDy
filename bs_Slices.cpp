@@ -40,10 +40,10 @@ public:
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 10000; // Parameters to change for simulation
+const int numTimeSteps = 100; // Parameters to change for simulation
 const double dt_star = .001;
 
-const int N = 37044; // Number of atoms in simulation
+const int N = 470596; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -59,7 +59,7 @@ const double TARGET_TEMP = tStar * EPS_STAR;
 const double MASS = 39.9 * 10 / Na / Kb; // Kelvin * ps^2 / A^2
 const double timeStep = dt_star * std::sqrt(MASS * SIGMA * SIGMA / EPS_STAR); // Convert time step to picoseconds
 
-const int targetCellLength = rCutoff;
+const double targetCellLength = rCutoff;
 const int numCellsPerDirection = std::floor(L / targetCellLength);
 const double cellLength = L / numCellsPerDirection; // Side length of each cell
 const int numCellsYZ = numCellsPerDirection * numCellsPerDirection; // Number of cells in one plane
@@ -67,7 +67,7 @@ const int numCellsXYZ = numCellsYZ * numCellsPerDirection; // Number of cells in
 
 std::mutex update_accels_mutex;
 std::array<std::mutex, N> mutexArr;
-BS::thread_pool pool;
+BS::thread_pool pool(4);
 
 double dot(double x, double y, double z);
 void thermostat(std::vector<Atom>& atomList);
@@ -246,15 +246,7 @@ double calcForcesToNeighbors(int celli, int cellj, int cellk, std::vector<Atom>&
             for (neighbor[2] = cellk - 1; neighbor[2] < cellk + 2; neighbor[2]++) {
 
                 for (int k = 0; k < 3; k++) { // Boundary conditions
-                    if (neighbor[k] < 0) {
-                        shiftedNeighbor[k] = neighbor[k] + numCellsPerDirection;
-                    }
-                    else if (neighbor[k] >= numCellsPerDirection) {
-                        shiftedNeighbor[k] = neighbor[k] - numCellsPerDirection;
-                    }
-                    else {
-                        shiftedNeighbor[k] = neighbor[k];
-                    }
+                    shiftedNeighbor[k] = (neighbor[k] + numCellsPerDirection) % numCellsPerDirection;
                 }
                 // Scalar index of neighboring cell
                 neighbor_index = shiftedNeighbor[0] * numCellsYZ + shiftedNeighbor[1] * numCellsPerDirection + shiftedNeighbor[2];
