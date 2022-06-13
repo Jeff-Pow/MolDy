@@ -12,6 +12,7 @@
 #include <string>
 #include <array>
 #include <thread>
+#include <mutex>
 #include "BS_thread_pool.hpp"
 
 /*
@@ -40,10 +41,10 @@ public:
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 100; // Parameters to change for simulation
+const int numTimeSteps = 5000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 470596; // Number of atoms in simulation
+const int N = 4000; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -66,7 +67,10 @@ std::vector<Atom> faceCenteredCell();
 std::vector<Atom> simpleCubicCell();
 void radialDistribution();
 
-BS::thread_pool pool(1);
+BS::thread_pool pool(std::thread::hardware_concurrency() - 1);
+//BS::thread_pool pool(1);
+std::array<std::mutex, N> mutexes;
+//std::thread writer;
 
 const double targetCellLength = rCutoff;
 const int numCellsPerDirection = std::floor(L / targetCellLength);
@@ -78,6 +82,7 @@ std::vector<int> header(numCellsXYZ, -1); // Array pointing at the highest numbe
 
 
 int main() {
+    std::cout << "Cells per direction: " << numCellsPerDirection << std::endl;
     std::ofstream positionFile("out.xyz");
     std::ofstream debug("debug.dat");
     std::ofstream energyFile("Energy.dat");
@@ -105,7 +110,6 @@ int main() {
     double netPotential;
     clock_t begin = clock();
 
-    std::cout << "Starting program \n";
     double count = .01;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
 
@@ -268,10 +272,14 @@ double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList) {
                                 netPotential += 4 * EPS_STAR * (sor12 - sor6);
                                 // debug << i << " on " << j << ": " << forceOverR << "\n";
 
+                                mutexes[i].lock();
+                                mutexes[j].lock();
                                 for (int k = 0; k < 3; k++) {
                                     atomList[i].accelerations[k] += (forceOverR * distArr[k] / MASS);
                                     atomList[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
                                 }
+                                mutexes[i].unlock();
+                                mutexes[j].unlock();
                             }
                         }
                         j = pointerArr[j];
