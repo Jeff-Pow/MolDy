@@ -70,7 +70,7 @@ void radialDistribution();
 BS::thread_pool pool(std::thread::hardware_concurrency() - 1);
 //BS::thread_pool pool(1);
 std::array<std::mutex, N> mutexes;
-//std::thread writer;
+// std::thread writer;
 
 const double targetCellLength = rCutoff;
 const int numCellsPerDirection = std::floor(L / targetCellLength);
@@ -80,6 +80,21 @@ const int numCellsXYZ = numCellsYZ * numCellsPerDirection; // Number of cells in
 std::array<int, N> pointerArr; // Array pointing to the next lowest atom in the cell
 std::vector<int> header(numCellsXYZ, -1); // Array pointing at the highest numbered atom in each cell
 
+
+void writePositions(std::ofstream &positionFile, std::vector<Atom> atomList, int i) {
+            positionFile << N << "\nTime: " << i << "\n";
+        //debug << "Time: " << i << "\n";
+
+        for (int j = 0; j < N; ++j) { // Write positions to xyz file
+            positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
+            //debug << "Atom number: " << j << "\n";
+            //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
+            //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
+            //debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
+            //debug << "- \n";
+        }
+        //debug << "------------------------------------------------- \n";
+}
 
 int main() {
     std::cout << "Cells per direction: " << numCellsPerDirection << std::endl;
@@ -108,7 +123,6 @@ int main() {
 
     double totalVelSquared;
     double netPotential;
-    clock_t begin = clock();
 
     double count = .01;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
@@ -118,18 +132,10 @@ int main() {
             count += .01;
         }
         
-        positionFile << N << "\nTime: " << i << "\n";
-        //debug << "Time: " << i << "\n";
+        std::vector<std::array<double, 3> currentPositions();
+        for ()
 
-        for (int j = 0; j < N; ++j) { // Write positions to xyz file
-            positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-            //debug << "Atom number: " << j << "\n";
-            //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-            //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
-            //debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
-            //debug << "- \n";
-        }
-        //debug << "------------------------------------------------- \n";
+        std::thread writer(writePositions, std::ref(positionFile), atomList, i);
 
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
@@ -165,6 +171,7 @@ int main() {
             //energyFile << "Total energy: " << netPotential + netKE << "\n";
             //energyFile << "------------------------------------------ \n";
         }
+        writer.join();
     }
 
     double avgPE = 0; // Average PE array
@@ -182,36 +189,12 @@ int main() {
 
     std::cout << " Reduced potential with long range correction: " << PEstar << std::endl;
 
-    clock_t end = clock();
-    double time = double(end - begin) / (double)CLOCKS_PER_SEC;
-    std::cout << "Time elapsed: \n";
-    std::cout << time << " seconds \n";
-    std::cout << time / 60 << " minutes" << std::endl;
-
     positionFile.close();
     debug.close();
     energyFile.close();
 
-    std::cout << "Finding radial distribution \n";
+    // std::cout << "Finding radial distribution \n";
     // radialDistribution(); // Comment out function to reduce runtime
-    clock_t z = clock();
-    double t = double(z - begin) / (double)CLOCKS_PER_SEC;
-    std::cout << "Time elapsed: \n";
-    std::cout << t << " seconds \n";
-    std::cout << t / 60 << " minutes" << std::endl;
-
-    /*
-    // Energy plotting block
-    std::vector<int> arr; // Vector to iterate through for graphing purposes
-    arr.reserve(4999);
-    for (int i = 0; i < 4999; i++) {
-           arr.push_back(5000 + i);
-    }
-    for (int i = 0; i < arr.size(); i++) { // Graph potential, kinetic, and total energy plot
-        plt::plot(arr, KE, "b-", arr, PE, "r-", arr, netE, "g-");
-    }
-    plt::show();
-    */
 
     return 0;
 }
