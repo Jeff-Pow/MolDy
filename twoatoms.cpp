@@ -11,12 +11,7 @@
 #include <fstream>
 #include <string>
 #include <array>
-/*
-#include "matplotlibcpp.h"
-#include "Python.h"
-namespace plt = matplotlibcpp;
-// If using graphing function, g++ moldy.cpp -I/usr/include/python3.10 -lpython3.10 -O2 otherwise comment it out
-*/
+
 
 struct Atom {
 public:
@@ -48,31 +43,31 @@ public:
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 1000; // Parameters to change for simulation
+const int numTimeSteps = 15000; // Parameters to change for simulation
 const double dt_star= .001;
 
 const int N = 864;
-const double SIGMA_AR = 3.405; // Angstroms
-const double EPSILON_AR = 1.6540 * std::pow(10, -21); // Joules
-const double EPS_STAR_AR = EPSILON_AR / Kb; // ~ 119.8 K
+const double SIGMA_NE = 2.775; // Angstroms
+const double EPSILON_NE = 1.6540 * std::pow(10, -21); // Joules
+const double EPS_STAR_NE = 36.831;
 const double SIGMA_XE = 4.055;
 const double EPS_STAR_XE = 218.18;
 
-const double MIXED_SIGMA = .5 * (SIGMA_AR + SIGMA_XE);
-const double MIXED_EPS = std::sqrt(EPS_STAR_AR * EPS_STAR_XE);
+const double MIXED_SIGMA = .5 * (SIGMA_NE + SIGMA_XE);
+const double MIXED_EPS = std::sqrt(EPS_STAR_NE * EPS_STAR_XE);
 
 const double rhostar = .6; // Dimensionless density of gas
 const double rho = rhostar / std::pow(MIXED_SIGMA, 3); // Density of gas
 const double L = std::cbrt(N / rho); // Unit cell length
 const double rCutoff = SIGMA_XE * 2.5; // Forces are negligible past this distance, not worth calculating
 const double rCutoffSquared = rCutoff * rCutoff;
-const double tStar = 1.24; // Reduced units of temperature
-const double TARGET_TEMP = tStar * MIXED_EPS;
+double tStar; // Reduced units of temperature
+double TARGET_TEMP = tStar * MIXED_EPS;
 // 39.9 is mass of argon in amu, 10 is a conversion between the missing units :)
-const double AR_MASS = 39.9 * 10 / Na / Kb; // Kelvin * ps^2 / A^2
+const double NE_MASS = 20.18 * 10 / Na / Kb; // Kelvin * ps^2 / A^2
 const double XE_MASS = 131.29 * 10 / Na / Kb;
-const double AVG_MASS = .5 * (AR_MASS + XE_MASS);
-const double timeStep = dt_star * std::sqrt((.5 * (XE_MASS + AR_MASS)) * MIXED_SIGMA * MIXED_SIGMA / MIXED_EPS); // Convert time step to picoseconds
+const double AVG_MASS = .5 * (NE_MASS + XE_MASS);
+const double timeStep = dt_star * std::sqrt((.5 * (XE_MASS + NE_MASS)) * MIXED_SIGMA * MIXED_SIGMA / MIXED_EPS); // Convert time step to picoseconds
 
 double dot(double x, double y, double z);
 void thermostat(std::vector<Atom> &atomList);
@@ -81,7 +76,10 @@ std::vector<Atom> faceCenteredCell();
 std::vector<Atom> simpleCubicCell();
 void radialDistribution();
 
-int main() {
+int main(int argc, char* argv[]) {
+    // .1 Creates a liquid in 15000 timesteps
+    tStar = std::stod(argv[1]);
+    TARGET_TEMP = tStar * MIXED_EPS;
     std::ofstream positionFile("out.xyz");
     std::ofstream debug("debug.dat");
     std::ofstream energyFile("Energy.dat");
@@ -107,30 +105,28 @@ int main() {
 
     double totalVelSquared;
     double netPotential;
-    clock_t begin = clock();
 
-    std::cout << "Starting program \n";
     double count = .01;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
 
         if (i > count * numTimeSteps) { // Percent progress
-            std::cout << count * 100 << "% \n";
+            std::cerr << count * 100 << "% \n";
             count += .01;
         }
         
-        positionFile << N << "\nTime: " << i << "\n";
-        //debug << "Time: " << i << "\n";
+            positionFile << N << "\nTime: " << i << "\n";
+            //debug << "Time: " << i << "\n";
 
-        for (int j = 0; j < N; ++j) { // Write positions to xyz file
-            positionFile << atomList[j].atomType << " " << atomList[j].positions[0] << " " << 
-                            atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-            //debug << "Atom number: " << j << "\n";
-            //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-            //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
-            //debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
-            //debug << "- \n";
-        }
-        //debug << "------------------------------------------------- \n";
+            for (int j = 0; j < N; ++j) { // Write positions to xyz file
+                positionFile << atomList[j].atomType << " " << atomList[j].positions[0] << " " << 
+                                atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
+                //debug << "Atom number: " << j << "\n";
+                //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
+                //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
+                //debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
+                //debug << "- \n";
+            }
+            //debug << "------------------------------------------------- \n";
 
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
@@ -165,7 +161,7 @@ int main() {
             //energyFile << "PE: " << netPotential << "\n";
             //energyFile << "Total energy: " << netPotential + netKE << "\n";
             //energyFile << "------------------------------------------ \n";
-            energyFile << netKE << " , " <<  netPotential << " , " << netPotential + netKE << "\n";
+            energyFile << netKE << "," <<  netPotential << "," << netPotential + netKE << "\n";
         }
     }
 
@@ -175,6 +171,14 @@ int main() {
     }
     avgPE /= PE.size();
 
+    double avgE = 0;
+    for (int i = 0; i < netE.size(); i++) {
+        avgE += netE[i];
+    }
+    avgE /= netE.size();
+    std::cout << 1 / tStar << " " << avgE << std::endl;
+    // std::cout << "Average energy: " << avgE << std::endl;
+
     double SoLo2 = MIXED_SIGMA / (L / 2); // Sigma over L over 2
     double Ulrc = (8.0 / 3.0) * M_PI * N * rhostar * MIXED_EPS; // Potential sub lrc (long range corrections)
     double temp = 1.0 / 3.0 * std::pow(SoLo2, 9.0);
@@ -182,38 +186,14 @@ int main() {
     Ulrc *= (temp - temp1);
     double PEstar = ((avgPE + Ulrc) / N) / MIXED_EPS; // Reduced potential energy
 
-    std::cout << " Reduced potential with long range correction: " << PEstar << std::endl;
-
-    clock_t end = clock();
-    double time = double(end - begin) / (double)CLOCKS_PER_SEC;
-    std::cout << "Time elapsed: \n";
-    std::cout << time << " seconds \n";
-    std::cout << time / 60 << " minutes" << std::endl;
+    std::cerr << "Reduced potential with long range correction: " << PEstar << std::endl;
 
     positionFile.close();
     debug.close();
     energyFile.close();
 
-    std::cout << "Finding radial distribution \n";
+    // std::cout << "Finding radial distribution \n";
     // radialDistribution(); // Comment out function to reduce runtime
-    clock_t z = clock();
-    double t = double(z - begin) / (double)CLOCKS_PER_SEC;
-    std::cout << "Time elapsed: \n";
-    std::cout << t << " seconds \n";
-    std::cout << t / 60 << " minutes" << std::endl;
-
-    /*
-    // Energy plotting block
-    std::vector<int> arr; // Vector to iterate through for graphing purposes
-    arr.reserve(4999);
-    for (int i = 0; i < 4999; i++) {
-           arr.push_back(5000 + i);
-    }
-    for (int i = 0; i < arr.size(); i++) { // Graph potential, kinetic, and total energy plot
-        plt::plot(arr, KE, "b-", arr, PE, "r-", arr, netE, "g-");
-    }
-    plt::show();
-    */
 
     return 0;
 }
@@ -307,12 +287,12 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
                                         if (r2 < rCutoffSquared) {
                                             double sig, eps;
                                             if (atomList[i].atomType == 'A' && atomList[j].atomType == 'A') {
-                                                sig = SIGMA_AR;
-                                                eps = EPS_STAR_AR;
+                                                sig = SIGMA_NE;
+                                                eps = EPS_STAR_NE;
                                             }
                                             else if (atomList[i].atomType == 'X' && atomList[j].atomType == 'X') {
                                                 sig = SIGMA_XE;
-                                                eps = EPS_STAR_AR;
+                                                eps = EPS_STAR_XE;
                                             }
                                             else {
                                                 sig = MIXED_SIGMA;
@@ -355,10 +335,10 @@ std::vector<Atom> simpleCubicCell() {
         for (int j = 0; j < n; j++) {
             for (int k = 0; k < n; k++) {
                 if (count % 2 == 0) {
-                    atomList.push_back(Atom(i * MIXED_SIGMA, j * MIXED_SIGMA, k * MIXED_SIGMA, 'A', AR_MASS));
+                    atomList.emplace_back(i * MIXED_SIGMA, j * MIXED_SIGMA, k * MIXED_SIGMA, 'A', NE_MASS);
                 }
                 else {
-                    atomList.push_back(Atom(i * MIXED_SIGMA, j * MIXED_SIGMA, k * MIXED_SIGMA, 'X', XE_MASS));
+                    atomList.emplace_back(i * MIXED_SIGMA, j * MIXED_SIGMA, k * MIXED_SIGMA, 'X', XE_MASS);
                 }
                 count++;
             }
@@ -380,10 +360,10 @@ std::vector<Atom> faceCenteredCell() {
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
             for (int k = 0; k < n; k++) {
-                atomList.push_back(Atom(i * dr, j * dr, k * dr, 'A', AR_MASS));
-                atomList.push_back(Atom(i * dr + dro2, j * dr + dro2, k * dr, 'X', XE_MASS));
-                atomList.push_back(Atom(i * dr + dro2, j * dr, k * dr + dro2, 'A', AR_MASS));
-                atomList.push_back(Atom(i * dr, j * dr + dro2, k * dr + dro2, 'X', XE_MASS));
+                atomList.emplace_back(i * dr, j * dr, k * dr, 'A', NE_MASS);
+                atomList.emplace_back(i * dr + dro2, j * dr + dro2, k * dr, 'X', XE_MASS);
+                atomList.emplace_back(i * dr + dro2, j * dr, k * dr + dro2, 'A', NE_MASS);
+                atomList.emplace_back(i * dr, j * dr + dro2, k * dr + dro2, 'X', XE_MASS);
             }
         }
     }
