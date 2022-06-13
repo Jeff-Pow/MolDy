@@ -81,19 +81,19 @@ std::array<int, N> pointerArr; // Array pointing to the next lowest atom in the 
 std::vector<int> header(numCellsXYZ, -1); // Array pointing at the highest numbered atom in each cell
 
 
-void writePositions(std::ofstream &positionFile, std::vector<Atom> atomList, int i) {
-            positionFile << N << "\nTime: " << i << "\n";
-        //debug << "Time: " << i << "\n";
+void writePositions(std::ofstream &positionFile, double &currentPositions[N][3], int i) {
+    positionFile << N << "\nTime: " << i << "\n";
+    //debug << "Time: " << i << "\n";
 
-        for (int j = 0; j < N; ++j) { // Write positions to xyz file
-            positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-            //debug << "Atom number: " << j << "\n";
-            //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-            //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
-            //debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
-            //debug << "- \n";
-        }
-        //debug << "------------------------------------------------- \n";
+    for (int j = 0; j < N; ++j) { // Write positions to xyz file
+        positionFile << "A " << currentPositions[j][0] << " " << currentPositions[j][1] << " " << currentPositions[j][2] << "\n";
+        //debug << "Atom number: " << j << "\n";
+        //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
+        //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
+        //debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
+        //debug << "- \n";
+    }
+    //debug << "------------------------------------------------- \n";
 }
 
 int main() {
@@ -132,10 +132,14 @@ int main() {
             count += .01;
         }
         
-        std::vector<std::array<double, 3> currentPositions();
-        for ()
+        double currentPositions[N][3];
+        for (int j = 0; j < atomList.size(); j++) {
+            for (int k = 0; k < 3; k++) {
+                currentPositions[j][k] = atomList[j].positions[k];
+            }
+        }
 
-        std::thread writer(writePositions, std::ref(positionFile), atomList, i);
+        std::thread writer(writePositions, std::ref(positionFile), std::ref(currentPositions), i);
 
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
