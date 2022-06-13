@@ -40,10 +40,10 @@ public:
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 100; // Parameters to change for simulation
+const int numTimeSteps = 1000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 470596; // Number of atoms in simulation
+const int N = 864; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -66,7 +66,7 @@ std::vector<Atom> faceCenteredCell();
 std::vector<Atom> simpleCubicCell();
 void radialDistribution();
 
-BS::thread_pool pool(1);
+BS::thread_pool pool;
 
 const double targetCellLength = rCutoff;
 const int numCellsPerDirection = std::floor(L / targetCellLength);
@@ -104,6 +104,17 @@ void step1(std::vector<Atom> &atomList) {
     }
 }
 
+double step3(std::vector<Atom> &atomList) {
+    double totalVelSquared = 0;
+    for (int k = 0; k < N; ++k) { // Update velocities
+        for (int j = 0; j < 3; ++j) {
+            atomList[k].velocities[j] += .5 * (atomList[k].accelerations[j] + atomList[k].oldAccelerations[j]) * timeStep;
+            totalVelSquared += atomList[k].velocities[j] * atomList[k].velocities[j];
+        }
+    }
+    return totalVelSquared;
+}
+
 
 int main() {
     std::ofstream positionFile("out.xyz");
@@ -131,7 +142,6 @@ int main() {
 
     double totalVelSquared;
     double netPotential;
-    clock_t begin = clock();
 
     std::cout << "Starting program \n";
     double count = .01;
@@ -148,13 +158,7 @@ int main() {
         
         netPotential = calcForces(atomList, debug); // Update accelerations and return potential of system
 
-        totalVelSquared = 0;
-        for (int k = 0; k < N; ++k) { // Update velocities
-            for (int j = 0; j < 3; ++j) {
-                atomList[k].velocities[j] += .5 * (atomList[k].accelerations[j] + atomList[k].oldAccelerations[j]) * timeStep;
-                totalVelSquared += atomList[k].velocities[j] * atomList[k].velocities[j];
-            }
-        }
+        totalVelSquared = step3(atomList);
 
         if (i < numTimeSteps / 2 && i % 5 == 0) { // Apply velocity modifications for first half of sample
             thermostat(atomList);
@@ -185,39 +189,14 @@ int main() {
     double temp1 = std::pow(SoLo2, 3.0);
     Ulrc *= (temp - temp1);
     double PEstar = ((avgPE + Ulrc) / N) / EPS_STAR; // Reduced potential energy
-
     std::cout << " Reduced potential with long range correction: " << PEstar << std::endl;
-
-    clock_t end = clock();
-    double time = double(end - begin) / (double)CLOCKS_PER_SEC;
-    std::cout << "Time elapsed: \n";
-    std::cout << time << " seconds \n";
-    std::cout << time / 60 << " minutes" << std::endl;
 
     positionFile.close();
     debug.close();
     energyFile.close();
 
-    std::cout << "Finding radial distribution \n";
+    // std::cout << "Finding radial distribution \n";
     // radialDistribution(); // Comment out function to reduce runtime
-    clock_t z = clock();
-    double t = double(z - begin) / (double)CLOCKS_PER_SEC;
-    std::cout << "Time elapsed: \n";
-    std::cout << t << " seconds \n";
-    std::cout << t / 60 << " minutes" << std::endl;
-
-    /*
-    // Energy plotting block
-    std::vector<int> arr; // Vector to iterate through for graphing purposes
-    arr.reserve(4999);
-    for (int i = 0; i < 4999; i++) {
-           arr.push_back(5000 + i);
-    }
-    for (int i = 0; i < arr.size(); i++) { // Graph potential, kinetic, and total energy plot
-        plt::plot(arr, KE, "b-", arr, PE, "r-", arr, netE, "g-");
-    }
-    plt::show();
-    */
 
     return 0;
 }
@@ -239,6 +218,15 @@ void thermostat(std::vector<Atom> &atomList) {
         }
     }
 }
+
+
+void writeAccel(std::vector<Atom> &atomList, std::array<double, 3> distArr, int i, int j, double forceOverR) {
+    for (int k = 0; k < 3; k++) {
+        atomList[i].accelerations[k] += forceOverR * distArr[k] / MASS;
+        atomList[j].accelerations[k] -= forceOverR * distArr[k] / MASS;
+    }
+}
+
 
 double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList) {
     std::array<int, 3> mc1; // Array to keep track of neighboring cells
@@ -277,11 +265,7 @@ double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList) {
                                 double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
                                 netPotential += 4 * EPS_STAR * (sor12 - sor6);
                                 // debug << i << " on " << j << ": " << forceOverR << "\n";
-
-                                for (int k = 0; k < 3; k++) {
-                                    atomList[i].accelerations[k] += (forceOverR * distArr[k] / MASS);
-                                    atomList[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
-                                }
+                                writeAccel(atomList, distArr, i, j, forceOverR);
                             }
                         }
                         j = pointerArr[j];
@@ -328,12 +312,12 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
         for  (cell[1] = 0; cell[1] <  numCellsPerDirection; cell[1]++) {
             for  (cell[2] = 0; cell[2] < numCellsPerDirection; cell[2]++) {
                 // Calculate index of the current cell we're working in
-                int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
+                c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
                 potentialArr[c] = pool.submit(calcForcesOnCell, cell, std::ref(atomList));
             }
         }
     }
-    for (int c = 0; c < numCellsXYZ; c++) {
+    for (c = 0; c < numCellsXYZ; c++) {
         netPotential += potentialArr[c].get();
     }
     return netPotential;
