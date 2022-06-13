@@ -81,7 +81,7 @@ std::array<int, N> pointerArr; // Array pointing to the next lowest atom in the 
 std::vector<int> header(numCellsXYZ, -1); // Array pointing at the highest numbered atom in each cell
 
 
-void writePositions(std::ofstream &positionFile, double &currentPositions[N][3], int i) {
+void writePositions(std::ofstream &positionFile, double (&currentPositions)[N][3], int i) {
     positionFile << N << "\nTime: " << i << "\n";
     //debug << "Time: " << i << "\n";
 
