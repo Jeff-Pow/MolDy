@@ -240,7 +240,7 @@ double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList) {
                 int c1 = shiftedNeighbor[0] * numCellsYZ + shiftedNeighbor[1] * numCellsPerDirection + shiftedNeighbor[2];
 
                 int i = header[c]; // Find the highest numbered atom in each cell
-                while (i > -1) {
+                while (i > -1) { 
                     int j = header[c1]; // Scan atom with the largest index in neighboring cell c1
                     while (j > -1) {
                         if (i < j) { // Don't double count atoms (if i > j its already been counted)
