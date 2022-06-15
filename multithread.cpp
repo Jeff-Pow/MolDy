@@ -70,7 +70,7 @@ void radialDistribution();
 BS::thread_pool pool(std::thread::hardware_concurrency() - 1);
 //BS::thread_pool pool(1);
 std::array<std::mutex, N> mutexes;
-// std::thread writer;
+double currentPositions[N][3];
 
 const double targetCellLength = rCutoff;
 const int numCellsPerDirection = std::floor(L / targetCellLength);
@@ -132,14 +132,14 @@ int main() {
             count += .01;
         }
         
-        double currentPositions[N][3];
+
         for (int j = 0; j < atomList.size(); j++) {
             for (int k = 0; k < 3; k++) {
                 currentPositions[j][k] = atomList[j].positions[k];
             }
         }
 
-        std::thread writer(writePositions, std::ref(positionFile), std::ref(currentPositions), i);
+        writePositions(positionFile, currentPositions, i);
 
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
@@ -175,7 +175,6 @@ int main() {
             //energyFile << "Total energy: " << netPotential + netKE << "\n";
             //energyFile << "------------------------------------------ \n";
         }
-        writer.join();
     }
 
     double avgPE = 0; // Average PE array

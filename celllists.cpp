@@ -37,7 +37,7 @@ public:
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 5000; // Parameters to change for simulation
+const int numTimeSteps = 15000; // Parameters to change for simulation
 const double dt_star= .001;
 
 const int N = 4000;
@@ -50,7 +50,7 @@ const double rho = rhostar / std::pow(SIGMA, 3); // Density of gas
 const double L = std::cbrt(N / rho); // Unit cell length
 const double rCutoff = SIGMA * 2.5; // Forces are negligible past this distance, not worth calculating
 const double rCutoffSquared = rCutoff * rCutoff;
-const double tStar = 1.24; // Reduced units of temperature
+const double tStar = .1; // Reduced units of temperature
 const double TARGET_TEMP = tStar * EPS_STAR;
 // 39.9 is mass of argon in amu, 10 is a conversion between the missing units :)
 const double MASS = 39.9 * 10 / Na / Kb; // Kelvin * ps^2 / A^2
