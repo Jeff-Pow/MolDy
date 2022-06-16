@@ -83,7 +83,7 @@ std::array<int, N> pointerArr; // Array pointing to the next lowest atom in the 
 std::vector<int> header(numCellsXYZ, -1); // Array pointing at the highest numbered atom in each cell
 
 
-void writePositions(std::ofstream &positionFile, std::vector<Atom> &atomList, int &i) {
+void writePositions(std::ofstream &positionFile, std::vector<Atom> &atomList, int i) {
     positionFile << N << "\nTime: " << i << "\n";
     //debug << "Time: " << i << "\n";
 
@@ -212,7 +212,7 @@ void thermostat(std::vector<Atom> &atomList) {
     }
 }
 
-void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std::list<std::array<std::array<double, 3>, N>> &accelList) {
+void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std::vector<std::array<std::array<double, 3>, N>> &accelList) {
     std::array<int, 3> mc1; // Array to keep track of neighboring cells
     std::array<double, 3> distArr; //
     std::array<int, 3> shiftedNeighbor; // Boundary conditions
@@ -275,8 +275,8 @@ void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std:
 
 void calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell pairs method to calculate forces
 
-    std::list<std::array<std::array<double, 3>, N>> accelList;
-    // accelList.reserve(343);
+    std::vector<std::array<std::array<double, 3>, N>> accelList;
+    accelList.reserve(numCellsXYZ + 1);
     int c; // Indexes of cell coordinates
     std::array<int, 3> cell; // Array to keep track of coordinates of a cell
     // std::array<int, 3> mc1; // Array to keep track of the coordinates of a neighboring cell
@@ -313,17 +313,16 @@ void calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell pai
             }
         }
     }
+    pool.wait_for_tasks();
     std::cout << "Count: " << count << std::endl;
     std::cout << "List size: " << accelList.size() << std::endl;
     std::cout << "Max size: " << accelList.max_size() << std::endl;
     for (int i = 0; i < numCellsXYZ; i++) {
-        auto arr = accelList.front();
         for (int j = 0; j < N; j++) {
             for (int k = 0; k < 3; k++) {
-                atomList[j].accelerations[k] += arr[j][k];
+                atomList[j].accelerations[k] += accelList[i][j][k];
             }
         }
-        accelList.pop_front();
     }
     int j = 3;
 }
