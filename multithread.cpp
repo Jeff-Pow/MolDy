@@ -72,7 +72,6 @@ void radialDistribution();
 BS::thread_pool pool(1);
 std::array<std::mutex, N> mutexes;
 std::mutex potentialMutex, accelMutex;
-double currentPositions[N][3];
 double netPotential;
 
 const double targetCellLength = rCutoff;
@@ -277,6 +276,7 @@ void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std:
 void calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell pairs method to calculate forces
 
     std::list<std::array<std::array<double, 3>, N>> accelList;
+    // accelList.reserve(343);
     int c; // Indexes of cell coordinates
     std::array<int, 3> cell; // Array to keep track of coordinates of a cell
     // std::array<int, 3> mc1; // Array to keep track of the coordinates of a neighboring cell
@@ -302,16 +302,20 @@ void calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell pai
         // Current atom is the highest in its cell, so it goes in the header
         header[c] = i;
     }
-
+    int count = 0;
     for  (cell[0] = 0; cell[0] < numCellsPerDirection; cell[0]++) { // Calculate coordinates of a cell to work in
         for  (cell[1] = 0; cell[1] <  numCellsPerDirection; cell[1]++) {
             for  (cell[2] = 0; cell[2] < numCellsPerDirection; cell[2]++) {
                 // Calculate index of the current cell we're working in
                 int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
                 pool.submit(calcForcesOnCell, cell, std::ref(atomList), std::ref(accelList));
+                count++;
             }
         }
     }
+    std::cout << "Count: " << count << std::endl;
+    std::cout << "List size: " << accelList.size() << std::endl;
+    std::cout << "Max size: " << accelList.max_size() << std::endl;
     for (int i = 0; i < numCellsXYZ; i++) {
         auto arr = accelList.front();
         for (int j = 0; j < N; j++) {
