@@ -69,7 +69,7 @@ std::vector<Atom> simpleCubicCell();
 void radialDistribution();
 
 //BS::thread_pool pool(std::thread::hardware_concurrency() - 1);
-BS::thread_pool pool(1);
+BS::thread_pool pool(7);
 std::array<std::mutex, N> mutexes;
 std::mutex potentialMutex, accelMutex;
 double netPotential;
@@ -128,7 +128,7 @@ int main() {
 
     double count = .01;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
-        std::cout << i << "\n";
+
         if (i > count * numTimeSteps) { // Percent progress
             std::cout << count * 100 << "% \n";
             count += .01;
@@ -255,9 +255,6 @@ void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std:
                                 for (int k = 0; k < 3; k++) {
                                     accelArr[i][k] += (forceOverR * distArr[k] / MASS);
                                     accelArr[j][k] -= (forceOverR * distArr[k] / MASS);
-                                    if (std::isnan(accelArr[i][k]) || std::isnan(accelArr[j][k])) {
-                                        std::cerr << ":(\n";
-                                    }
                                 }
                             }
                         }
@@ -309,27 +306,18 @@ void calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell pai
     for  (cell[0] = 0; cell[0] < numCellsPerDirection; cell[0]++) { // Calculate coordinates of a cell to work in
         for  (cell[1] = 0; cell[1] <  numCellsPerDirection; cell[1]++) {
             for  (cell[2] = 0; cell[2] < numCellsPerDirection; cell[2]++) {
-                // Calculate index of the current cell we're working in
                 pool.push_task(calcForcesOnCell, cell, std::ref(atomList), std::ref(accelList));
-                count++;
             }
         }
     }
     pool.wait_for_tasks();
-    std::cout << "Count: " << count << std::endl;
-    std::cout << "List size: " << accelList.size() << std::endl;
-    std::cout << "Max size: " << accelList.max_size() << std::endl;
     for (int i = 0; i < numCellsXYZ; i++) {
         for (int j = 0; j < N; j++) {
             for (int k = 0; k < 3; k++) {
-                if (std::isnan(atomList[j].accelerations[k])) {
-                    std::cerr << "Got a NaN :(" << std::endl;
-                }
                 atomList[j].accelerations[k] += accelList[i][j][k];
             }
         }
     }
-    int j = 3;
 }
 
 std::vector<Atom> simpleCubicCell() {
