@@ -9,5 +9,5 @@ edition = "2021"
 rand="0.3.14"
 
 [[bin]]
-name = "moldy"
-path = "src/moldy.rs"
+name = "celllists"
+path = "src/celllists.rs"

@@ -6,10 +6,10 @@ use rand::Rng;
 const KB: f64 = 1.38e-23;
 const NA: f64 = 6.022e23;
 
-const NUM_TIME_STEPS: i32 = 10000;
+const NUM_TIME_STEPS: i32 = 4000;
 const DT_STAR: f64 = 0.001;
 
-const N: i32 = 256;
+const N: i32 = 5000;
 const SIGMA: f64 = 3.405;
 const EPSILON: f64 = 1.654e-21;
 const EPS_STAR: f64 = EPSILON / KB;
@@ -96,7 +96,7 @@ fn main() {
             }
         }
 
-        net_potential = calc_forces(&mut atoms);
+        calc_forces(&mut atoms);
 
         total_vel_squared = 0.;
 
@@ -152,19 +152,19 @@ fn thermostat(atoms: &mut Vec<Atom>) {
     } 
 }
 
-fn calc_forces(atoms: &mut Vec<Atom>) -> f64 {
+fn calc_forces(atoms: &mut Vec<Atom>) {
     let mut net_potential: f64 = 0.;
     const target_cell_length: f64 = R_CUTOFF;
-    const cells_per_side: i32 = f64::floor(L as i32 / targetCellLength);
+    const cells_per_side: i32 = f64::floor(L as i32 / targetCellLength) as i32;
     const cell_length: f64 = L / cells_per_side as f64;
-    let cellsxy = cells_per_side * cells_per_side;
+    let cellsyz = cells_per_side * cells_per_side;
     let cellsxyz = cellsxy * cells_per_side;
-    let mut pointer_arr: [f64, N] = [0.; N];
-    let mut header: [f64, cellsxyz!()];
-    let mut mc: [f64, 3];
-    let mut mc1: [f64, 3];
-    let mut neighbor: [i32, 3];
-    let mut distArr: [f64, 3];
+    let mut pointer_arr: [f64; N] = [0.; N];
+    let mut header: [f64; cellsxyz!() as usize];
+    let mut mc: [f64; 3];
+    let mut mc1: [f64; 3];
+    let mut neighbor: [i32; 3];
+    let mut distArr: [f64; 3];
     let c: i32;
     let c1: i32;
 
@@ -195,53 +195,9 @@ fn calc_forces(atoms: &mut Vec<Atom>) -> f64 {
                 mc[1] = k;
                 mc[2] = j;
                 c = mc[0] * cellsxy + mc[1] * cells_per_direction + mc[2];
-                
-                for l in i - 1..i + 2 {
-                    for m in j - 1..j + 2 {
-                        for n in k - 1..k + 2 {
-                            
-                            for o in 0..3 {
-                                if l < 0 {
-                                    
-                                }
-                            }    
-                        }
-                    }
-                }
-        }
-    }
-
-
-
-    let mut dist_arr: [f64; 3] = [0., 0., 0.];
-
-    for i in 0..(N-1){
-        for j in i..N {
-            if i != j {
-                for k in 0..3 {
-                    dist_arr[k] = atoms[i as usize].positions[k] - atoms[j as usize].positions[k];
-                    dist_arr[k] -= L!() * f64::round(dist_arr[k] / L!());
-                }
-
-                let r2: f64 = dot(dist_arr[0], dist_arr[1], dist_arr[2]);
-
-                if r2 <= rCutoffSquared!() {
-                    let s2or2 = SIGMA * SIGMA / r2;
-                    let sor6 = s2or2 * s2or2 * s2or2;
-                    let sor12 = sor6 * sor6;
-
-                    let force_over_r = 24. * EPS_STAR / r2 * (2. * sor12 - sor6);
-                    net_potential += 4. * EPS_STAR * (sor12 - sor6);
-
-                    for k in 0..3 {
-                        atoms[i as usize].accelerations[k] += force_over_r * dist_arr[k] / MASS;
-                        atoms[j as usize].accelerations[k] -= force_over_r * dist_arr[k] / MASS;
-                    }
-                }
             }
         }
     }
-    return net_potential;
 }
 
 fn simple_cubic_cell() -> Vec<Atom> {
