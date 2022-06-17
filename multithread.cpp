@@ -34,8 +34,8 @@ public:
         positions[0] = x;
         positions[1] = y;
         positions[2] = z;
-        accelerations = {0, 0, 0};
-        oldAccelerations = {0, 0, 0};
+        accelerations = { 0, 0, 0 };
+        oldAccelerations = { 0, 0, 0 };
     }
 };
 
@@ -43,7 +43,7 @@ const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
 const int numTimeSteps = 5000; // Parameters to change for simulation
-const double dt_star= .001;
+const double dt_star = .001;
 
 const int N = 4000; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
@@ -62,8 +62,8 @@ const double MASS = 39.9 * 10 / Na / Kb; // Kelvin * ps^2 / A^2
 const double timeStep = dt_star * std::sqrt(MASS * SIGMA * SIGMA / EPS_STAR); // Convert time step to picoseconds
 
 double dot(double x, double y, double z);
-void thermostat(std::vector<Atom> &atomList);
-void calcForces(std::vector<Atom> &atomList, std::ofstream &debug);
+void thermostat(std::vector<Atom>& atomList);
+void calcForces(std::vector<Atom>& atomList, std::ofstream& debug);
 std::vector<Atom> faceCenteredCell();
 std::vector<Atom> simpleCubicCell();
 void radialDistribution();
@@ -83,13 +83,13 @@ std::array<int, N> pointerArr; // Array pointing to the next lowest atom in the 
 std::vector<int> header(numCellsXYZ, -1); // Array pointing at the highest numbered atom in each cell
 
 
-void writePositions(std::ofstream &positionFile, std::vector<Atom> &atomList, int &i) {
+void writePositions(std::ofstream& positionFile, std::vector<Atom>& atomList, int& i) {
     positionFile << N << "\nTime: " << i << "\n";
     //debug << "Time: " << i << "\n";
 
     for (int j = 0; j < N; ++j) { // Write positions to xyz file
         positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " "
-                             << atomList[j].positions[2] << "\n";
+            << atomList[j].positions[2] << "\n";
         //debug << "Atom number: " << j << "\n";
         //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
         //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
@@ -117,11 +117,11 @@ int main() {
     auto atomList = faceCenteredCell();
 
     for (int i = 0; i < N; ++i) { // Randomize velocities
-         for (int j = 0; j < 3; ++j) {
-             atomList[i].velocities[j] = distribution(generator);
-         }
+        for (int j = 0; j < 3; ++j) {
+            atomList[i].velocities[j] = distribution(generator);
+        }
     }
-   
+
     thermostat(atomList); // Make velocities more accurate
 
     double totalVelSquared;
@@ -133,12 +133,12 @@ int main() {
             std::cout << count * 100 << "% \n";
             count += .01;
         }
-        
+
         writePositions(positionFile, atomList, i);
 
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
-                atomList[k].positions[j] += atomList[k].velocities[j] * timeStep 
+                atomList[k].positions[j] += atomList[k].velocities[j] * timeStep
                     + .5 * atomList[k].accelerations[j] * timeStep * timeStep;
                 atomList[k].positions[j] += -L * std::floor(atomList[k].positions[j] / L); // Keep atom inside box
                 atomList[k].oldAccelerations[j] = atomList[k].accelerations[j];
@@ -194,11 +194,11 @@ int main() {
     return 0;
 }
 
-double dot (double x, double y, double z) { // Returns dot product of a vector
+double dot(double x, double y, double z) { // Returns dot product of a vector
     return x * x + y * y + z * z;
 }
 
-void thermostat(std::vector<Atom> &atomList) {
+void thermostat(std::vector<Atom>& atomList) {
     double instantTemp = 0;
     for (int i = 0; i < N; i++) { // Add kinetic energy of each molecule to the temperature
         instantTemp += MASS * dot(atomList[i].velocities[0], atomList[i].velocities[1], atomList[i].velocities[2]);
@@ -212,13 +212,13 @@ void thermostat(std::vector<Atom> &atomList) {
     }
 }
 
-void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std::vector<std::array<std::array<double, 3>, N>> &accelList) {
+void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom>& atomList) {
+    std::array<std::array<double, 3>, N> accelArr;
+    accelArr.fill({ 0,0,0 });
     std::array<int, 3> mc1; // Array to keep track of neighboring cells
     std::array<double, 3> distArr; //
     std::array<int, 3> shiftedNeighbor; // Boundary conditions
     double localPotential = 0;
-    std::array<std::array<double, 3>, N> accelArr;
-    accelArr.fill({0,0,0});
     int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
 
     // Scan neighbor cells including the one currently active
@@ -266,14 +266,18 @@ void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std:
         }
     }
     potentialMutex.lock();
-    accelMutex.lock();
-    accelList.push_back(accelArr);
     netPotential += localPotential;
     potentialMutex.unlock();
+    accelMutex.lock();
+    for (int atomNum = 0; atomNum < N; atomNum++) {
+        for (int i = 0; i < 3; i++) {
+            atomList[atomNum].accelerations[i] += accelArr[atomNum][i];
+        }
+    }
     accelMutex.unlock();
 }
 
-void calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell pairs method to calculate forces
+void calcForces(std::vector<Atom>& atomList, std::ofstream& debug) { // Cell pairs method to calculate forces
 
     std::vector<std::array<std::array<double, 3>, N>> accelList;
     accelList.reserve(343);
@@ -292,7 +296,7 @@ void calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell pai
     }
 
     for (int i = 0; i < N; i++) {
-        for (int j = 0; j < 3; j++) { 
+        for (int j = 0; j < 3; j++) {
             cell[j] = atomList[i].positions[j] / cellLength; // Find the coordinates of a cell an atom belongs to
         }
         // Turn coordinates of cell into a cell index for the header array
@@ -303,21 +307,14 @@ void calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell pai
         header[c] = i;
     }
     int count = 0;
-    for  (cell[0] = 0; cell[0] < numCellsPerDirection; cell[0]++) { // Calculate coordinates of a cell to work in
-        for  (cell[1] = 0; cell[1] <  numCellsPerDirection; cell[1]++) {
-            for  (cell[2] = 0; cell[2] < numCellsPerDirection; cell[2]++) {
-                pool.push_task(calcForcesOnCell, cell, std::ref(atomList), std::ref(accelList));
+    for (cell[0] = 0; cell[0] < numCellsPerDirection; cell[0]++) { // Calculate coordinates of a cell to work in
+        for (cell[1] = 0; cell[1] < numCellsPerDirection; cell[1]++) {
+            for (cell[2] = 0; cell[2] < numCellsPerDirection; cell[2]++) {
+                pool.push_task(calcForcesOnCell, cell, std::ref(atomList));
             }
         }
     }
     pool.wait_for_tasks();
-    for (int i = 0; i < numCellsXYZ; i++) {
-        for (int j = 0; j < N; j++) {
-            for (int k = 0; k < 3; k++) {
-                atomList[j].accelerations[k] += accelList[i][j][k];
-            }
-        }
-    }
 }
 
 std::vector<Atom> simpleCubicCell() {
@@ -359,7 +356,7 @@ std::vector<Atom> faceCenteredCell() {
 
 
 void radialDistribution() {
-    
+
     std::string line;
     std::string s;
 
@@ -371,7 +368,7 @@ void radialDistribution() {
     // Arrays hold coordinates of each atom at each step
     double dr = L / 2.0 / 100;
 
-    std::ifstream xyz ("out.xyz");
+    std::ifstream xyz("out.xyz");
 
     for (int i = 0; i < numTimeSteps; i++) {
 
@@ -380,11 +377,11 @@ void radialDistribution() {
 
         for (int row = 0; row < N; row++) {
             std::getline(xyz, line);
-            std::istringstream iss( line );
+            std::istringstream iss(line);
 
             iss >> s >> x[row] >> y[row] >> z[row]; // Drop atom type, store coordinates of each atom
         }
-        
+
 
         if (i >= numTimeSteps / 2) {
             for (int j = 0; j < N - 1; j++) {
@@ -395,10 +392,10 @@ void radialDistribution() {
                     yDif = yDif - L * std::round(yDif / L);
                     double zDif = z[j] - z[k];
                     zDif = zDif - L * std::round(zDif / L);
-                    
+
                     double r = std::sqrt(dot(xDif, yDif, zDif));
 
-                    if (r < L/2.0) {
+                    if (r < L / 2.0) {
                         data[(int)(r / dr)] += 2.0;
                     }
                 }
