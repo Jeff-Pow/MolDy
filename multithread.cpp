@@ -11,7 +11,7 @@
 #include <fstream>
 #include <string>
 #include <array>
-#include <list>
+#include <map>
 #include <thread>
 #include <mutex>
 #include "BS_thread_pool.hpp"
@@ -22,6 +22,10 @@
 namespace plt = matplotlibcpp;
 // If using graphing function, g++ moldy.cpp -I/usr/include/python3.10 -lpython3.10 -O2 otherwise comment it out
 */
+
+struct VectorOfZeroes {
+    std::array<int, 3> a = {0, 0, 0};
+};
 
 struct Atom {
 public:
@@ -212,11 +216,11 @@ void thermostat(std::vector<Atom>& atomList) {
     }
 }
 
-void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom>& atomList) {
-    std::array<std::array<double, 3>, N> accelArr;
-    accelArr.fill({ 0,0,0 });
+void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom>& atomList, std::vector<std::map<int, std::array<double, 3>>> &accelList) {
+    std::map<int, std::array<double, 3>> accelMap;
+    std::array<double, 3> fillArr = {0, 0, 0};
     std::array<int, 3> mc1; // Array to keep track of neighboring cells
-    std::array<double, 3> distArr; //
+    std::array<double, 3> distArr; 
     std::array<int, 3> shiftedNeighbor; // Boundary conditions
     double localPotential = 0;
     int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
@@ -233,9 +237,11 @@ void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom>& atomList) {
                 int c1 = shiftedNeighbor[0] * numCellsYZ + shiftedNeighbor[1] * numCellsPerDirection + shiftedNeighbor[2];
 
                 int i = header[c]; // Find the highest numbered atom in each cell
+                accelMap.emplace(i, fillArr);
                 while (i > -1) {
                     int j = header[c1]; // Scan atom with the largest index in neighboring cell c1
                     while (j > -1) {
+                        accelMap.emplace(i, fillArr);
                         if (i < j) { // Don't double count atoms (if i > j its already been counted)
                             for (int k = 0; k < 3; k++) {
                                 // Apply boundary conditions
@@ -253,8 +259,8 @@ void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom>& atomList) {
                                 // debug << i << " on " << j << ": " << forceOverR << "\n";
 
                                 for (int k = 0; k < 3; k++) {
-                                    accelArr[i][k] += (forceOverR * distArr[k] / MASS);
-                                    accelArr[j][k] -= (forceOverR * distArr[k] / MASS);
+                                    accelMap[i][k] += (forceOverR * distArr[k] / MASS);
+                                    accelMap[j][k] -= (forceOverR * distArr[k] / MASS);
                                 }
                             }
                         }
@@ -269,17 +275,24 @@ void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom>& atomList) {
     netPotential += localPotential;
     potentialMutex.unlock();
     accelMutex.lock();
-    for (int atomNum = 0; atomNum < N; atomNum++) {
-        for (int i = 0; i < 3; i++) {
-            atomList[atomNum].accelerations[i] += accelArr[atomNum][i];
+    accelList.emplace_back(accelMap);
+    accelMutex.unlock();
+}
+
+void writeAccel(std::vector<std::map<int, std::array<double, 3>>> &accelList, std::vector<Atom> &atomList) {
+    std::map<int, std::array<double, 3>>::iterator it;
+    for (auto map : accelList) {
+        for (it = map.begin(); it != map.end(); it++) {
+            for (int i = 0; i < 3; i++) {
+                atomList[it->first].accelerations[i] += it->second[i];
+            } 
         }
     }
-    accelMutex.unlock();
 }
 
 void calcForces(std::vector<Atom>& atomList, std::ofstream& debug) { // Cell pairs method to calculate forces
 
-    std::vector<std::array<std::array<double, 3>, N>> accelList;
+    std::vector<std::map<int, std::array<double, 3>>> accelList;
     accelList.reserve(343);
     int c; // Indexes of cell coordinates
     std::array<int, 3> cell; // Array to keep track of coordinates of a cell
@@ -310,11 +323,12 @@ void calcForces(std::vector<Atom>& atomList, std::ofstream& debug) { // Cell pai
     for (cell[0] = 0; cell[0] < numCellsPerDirection; cell[0]++) { // Calculate coordinates of a cell to work in
         for (cell[1] = 0; cell[1] < numCellsPerDirection; cell[1]++) {
             for (cell[2] = 0; cell[2] < numCellsPerDirection; cell[2]++) {
-                pool.push_task(calcForcesOnCell, cell, std::ref(atomList));
+                pool.push_task(calcForcesOnCell, cell, std::ref(atomList), std::ref(accelList));
             }
         }
     }
     pool.wait_for_tasks();
+    writeAccel(accelList, atomList);
 }
 
 std::vector<Atom> simpleCubicCell() {
