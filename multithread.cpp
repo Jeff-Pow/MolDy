@@ -212,12 +212,13 @@ void thermostat(std::vector<Atom> &atomList) {
     }
 }
 
-void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std::list<std::array<std::array<double, 3>, N>> &accelList) {
+void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std::vector<std::array<std::array<double, 3>, N>> &accelList) {
     std::array<int, 3> mc1; // Array to keep track of neighboring cells
     std::array<double, 3> distArr; //
     std::array<int, 3> shiftedNeighbor; // Boundary conditions
     double localPotential = 0;
     std::array<std::array<double, 3>, N> accelArr;
+    accelArr.fill({0,0,0});
     int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
 
     // Scan neighbor cells including the one currently active
@@ -241,8 +242,7 @@ void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std:
                                 distArr[k] = atomList[i].positions[k] - atomList[j].positions[k];
                                 distArr[k] -= L * std::round(distArr[k] / L);
                             }
-                            double r2 = dot(distArr[0], distArr[1],
-                                            distArr[2]); // Dot of distance vector between the two atoms
+                            double r2 = dot(distArr[0], distArr[1], distArr[2]); // Dot of distance vector between the two atoms
                             if (r2 < rCutoffSquared) {
                                 double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
                                 double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
@@ -255,6 +255,9 @@ void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std:
                                 for (int k = 0; k < 3; k++) {
                                     accelArr[i][k] += (forceOverR * distArr[k] / MASS);
                                     accelArr[j][k] -= (forceOverR * distArr[k] / MASS);
+                                    if (std::isnan(accelArr[i][k]) || std::isnan(accelArr[j][k])) {
+                                        std::cerr << ":(\n";
+                                    }
                                 }
                             }
                         }
@@ -275,8 +278,8 @@ void calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std:
 
 void calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell pairs method to calculate forces
 
-    std::list<std::array<std::array<double, 3>, N>> accelList;
-    // accelList.reserve(343);
+    std::vector<std::array<std::array<double, 3>, N>> accelList;
+    accelList.reserve(343);
     int c; // Indexes of cell coordinates
     std::array<int, 3> cell; // Array to keep track of coordinates of a cell
     // std::array<int, 3> mc1; // Array to keep track of the coordinates of a neighboring cell
@@ -307,23 +310,24 @@ void calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell pai
         for  (cell[1] = 0; cell[1] <  numCellsPerDirection; cell[1]++) {
             for  (cell[2] = 0; cell[2] < numCellsPerDirection; cell[2]++) {
                 // Calculate index of the current cell we're working in
-                int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
-                pool.submit(calcForcesOnCell, cell, std::ref(atomList), std::ref(accelList));
+                pool.push_task(calcForcesOnCell, cell, std::ref(atomList), std::ref(accelList));
                 count++;
             }
         }
     }
+    pool.wait_for_tasks();
     std::cout << "Count: " << count << std::endl;
     std::cout << "List size: " << accelList.size() << std::endl;
     std::cout << "Max size: " << accelList.max_size() << std::endl;
     for (int i = 0; i < numCellsXYZ; i++) {
-        auto arr = accelList.front();
         for (int j = 0; j < N; j++) {
             for (int k = 0; k < 3; k++) {
-                atomList[j].accelerations[k] += arr[j][k];
+                if (std::isnan(atomList[j].accelerations[k])) {
+                    std::cerr << "Got a NaN :(" << std::endl;
+                }
+                atomList[j].accelerations[k] += accelList[i][j][k];
             }
         }
-        accelList.pop_front();
     }
     int j = 3;
 }
