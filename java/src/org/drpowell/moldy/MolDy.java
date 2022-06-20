@@ -206,20 +206,17 @@ public class MolDy {
     }
 
     public static void main(String[] args) throws FileNotFoundException {
-        PrintStream outputStream = new PrintStream(new FileOutputStream(new File("out.xyz")));
+        long startTime = System.currentTimeMillis();
+        PrintStream outputStream = new PrintStream(new BufferedOutputStream(new FileOutputStream(new File("out.xyz"))), false);
         ArrayList<Double> KE = new ArrayList<>(numTimeSteps / 2);
         ArrayList<Double> PE = new ArrayList<>(numTimeSteps / 2);
         ArrayList<Double> netE = new ArrayList<>(numTimeSteps / 2);
 
         ArrayList<Atom> atoms = faceCenteredCell(N, L);
         thermostat(atoms);
-        double count = .01;
         for (int t = 0; t < numTimeSteps; t++) {
-            if (t > count * numTimeSteps) {
-                System.out.println(count * 100 + "%");
-                count += .01;
-            }
             writePositions(outputStream, atoms, t);
+            outputStream.flush();
 
             // update positions
             for (Atom atom: atoms) {
@@ -242,8 +239,8 @@ public class MolDy {
                 }
             }
 
-            if (t % 5 == 0) {
-                System.err.println(t/5);
+            if ((t * 100) % numTimeSteps == 0) {
+                System.err.println((t*100)/numTimeSteps);
             }
 
             if (t < numTimeSteps / 2 && t % 5 == 0 && t != 0) {
@@ -274,5 +271,6 @@ public class MolDy {
         Ulrc *= (temp - temp1);
         double PEstar = ((avgPE + Ulrc) / N) / EPS_STAR;
         System.out.println("Reduced potential with long range corrections: " + PEstar);
+        System.out.println("Total time: " + ((System.currentTimeMillis() - startTime) / 1000.0) + " seconds");
     }
 }
