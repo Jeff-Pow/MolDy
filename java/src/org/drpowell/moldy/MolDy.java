@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import java.lang.Math;
 
 public class MolDy {
 
@@ -20,7 +21,7 @@ public class MolDy {
             positions[1] = y;
             positions[2] = z;
             for (int i = 0; i < 3; i++) {
-                velocities[i] = random.nextGaussian(0, 0.5);
+                velocities[i] = random.nextGaussian();
             }
         }
     }
@@ -164,7 +165,7 @@ public class MolDy {
                 }
             }
         }
-        System.err.println("For cell index " + cellIndex + " there were " + pairsAffected + " affected pairs");
+        //System.err.println("For cell index " + cellIndex + " there were " + pairsAffected + " affected pairs");
         return localPotential;
     }
 
@@ -212,13 +213,18 @@ public class MolDy {
 
         ArrayList<Atom> atoms = faceCenteredCell(N, L);
         thermostat(atoms);
+        double count = .01;
         for (int t = 0; t < numTimeSteps; t++) {
+            if (t > count * numTimeSteps) {
+                System.out.println(count * 100 + "%");
+                count += .01;
+            }
             writePositions(outputStream, atoms, t);
 
             // update positions
             for (Atom atom: atoms) {
                 for (int i = 0; i < 3; i++) {
-                    atom.positions[i] += atom.velocities[i] * t + atom.accelerations[i] * t * t / 2;
+                    atom.positions[i] += atom.velocities[i] * timeStep + atom.accelerations[i] * timeStep * timeStep;
                     atom.positions[i] -= L * Math.floor(atom.positions[i] / L); // keep atom inside box
                     atom.oldAccelerations[i] = atom.accelerations[i];
                 }
@@ -229,7 +235,7 @@ public class MolDy {
             double totalVelSquared = 0;
             for (Atom atom: atoms) {
                 for (int i = 0; i < 3; i++) {
-                    atom.velocities[i] += (atom.accelerations[i] + atom.oldAccelerations[i]) * t / 2;
+                    atom.velocities[i] += (atom.accelerations[i] + atom.oldAccelerations[i]) * timeStep / 2;
                     totalVelSquared += atom.velocities[i] * atom.velocities[i];
                     atom.oldAccelerations[i] = atom.accelerations[i];
                     atom.accelerations[i] = 0;
@@ -255,5 +261,18 @@ public class MolDy {
 
         }
 
+        double avgPE = 0; // Average PE array
+        for (int i = 0; i < PE.size(); i++) {
+            avgPE += PE.get(i);
+        }
+        avgPE /= PE.size();
+
+        double SoLo2 = SIGMA / (L / 2); // Sigma over L over 2
+        double Ulrc = (8.0 / 3.0) * Math.PI * N * rhostar * EPS_STAR; // Potential sub lrc (long range corrections)
+        double temp = 1.0 / 3.0 * Math.pow(SoLo2, 9.0);
+        double temp1 = Math.pow(SoLo2, 3.0);
+        Ulrc *= (temp - temp1);
+        double PEstar = ((avgPE + Ulrc) / N) / EPS_STAR;
+        System.out.println("Reduced potential with long range corrections: " + PEstar);
     }
 }
