@@ -224,7 +224,7 @@ public class MolDy {
             // update positions
             for (Atom atom: atoms) {
                 for (int i = 0; i < 3; i++) {
-                    atom.positions[i] += atom.velocities[i] * timeStep + atom.accelerations[i] * timeStep * timeStep;
+                    atom.positions[i] += atom.velocities[i] * timeStep + .5 * atom.accelerations[i] * timeStep * timeStep;
                     atom.positions[i] -= L * Math.floor(atom.positions[i] / L); // keep atom inside box
                     atom.oldAccelerations[i] = atom.accelerations[i];
                 }
