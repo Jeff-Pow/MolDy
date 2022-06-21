@@ -3,9 +3,10 @@ package org.drpowell.moldy;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Random;
 import java.lang.Math;
-import java.util.concurrent.Callable;
+import java.util.concurrent.*;
 
 public class MolDy {
 
@@ -68,6 +69,8 @@ public class MolDy {
     public static final int numCellsYZ = numCellsPerDirection * numCellsPerDirection; // Number of cells in one plane
     public static final int numCellsXYZ = numCellsYZ * numCellsPerDirection; // Number of cells in the simulation
 
+    private static final ExecutorService executorService = Executors.newWorkStealingPool();
+
     public static ArrayList<Atom> faceCenteredCell(int totalAtoms, double unitCellLength) {
         double n = Math.cbrt(totalAtoms / 4); // Number of unit cells in each direction
         ArrayList<Atom> atoms = new ArrayList<Atom>(totalAtoms);
@@ -123,7 +126,13 @@ public class MolDy {
         return response;
     }
 
-    private static double calcForcesOnCell(int cellIndex, ArrayList<Atom> atoms, ArrayList<Atom> [] cellAtoms) {
+    private static final Callable<Double> calcForcesOnCellCallable(final int cellIndex, final ArrayList<Atom> [] cellAtoms) {
+        return () -> {
+            return calcForcesOnCell(cellIndex, cellAtoms);
+        };
+    }
+
+    private static final double calcForcesOnCell(final int cellIndex, final ArrayList<Atom> [] cellAtoms) {
         double localPotential = 0;
         int [] cellAddress = cellIndexToAddress(cellIndex);
         int [] neighborAddress = new int[3];
@@ -147,6 +156,7 @@ public class MolDy {
                                 for (int k = 0; k < 3; k++) {
                                     // Apply boundary conditions
                                     distanceVector[k] = atomi.positions[k] - atomj.positions[k];
+                                    //distanceVector[k] -= L * Math.round(distanceVector[k] / L);
                                     distanceVector[k] -= L * Math.round(distanceVector[k] / L);
                                 }
                                 double r2 = dot(distanceVector, distanceVector); // Dot of distance vector between the two atoms
@@ -159,9 +169,16 @@ public class MolDy {
                                     localPotential += 4 * EPS_STAR * (sor12 - sor6);
                                     // debug << i << " on " << j << ": " << forceOverR << "\n";
 
-                                    for (int k = 0; k < 3; k++) {
-                                        atomi.accelerations[k] += (forceOverR * distanceVector[k] / MASS);
-                                        atomj.accelerations[k] -= (forceOverR * distanceVector[k] / MASS);
+                                    double accelFactor = forceOverR / MASS;
+                                    synchronized (atomi) {
+                                        for (int k = 0; k < 3; k++) {
+                                            atomi.accelerations[k] += distanceVector[k] * accelFactor;
+                                        }
+                                    }
+                                    synchronized (atomj) {
+                                        for (int k = 0; k < 3; k++) {
+                                            atomj.accelerations[k] -= distanceVector[k] * accelFactor;
+                                        }
                                     }
                                 }
                             }
@@ -174,7 +191,7 @@ public class MolDy {
         return localPotential;
     }
 
-    public static double calcForces(ArrayList<Atom> atoms) {
+    public static double calcForces(final ArrayList<Atom> atoms) throws ExecutionException, InterruptedException {
         int cellIndex;
         int [] cellAddress = new int[3];
         double netPotential = 0;
@@ -191,8 +208,12 @@ public class MolDy {
             cellAtoms[cellAddressToIndex(cellAddress)].add(a);
         }
 
+        List<Future<Double>> potentialFutures = new ArrayList<>(numCellsXYZ);
         for (cellIndex = 0; cellIndex < numCellsXYZ ; cellIndex++) {
-            netPotential += calcForcesOnCell(cellIndex, atoms, cellAtoms);
+            potentialFutures.add(executorService.submit(calcForcesOnCellCallable(cellIndex, cellAtoms)));
+        }
+        for (Future<Double> potentialContrib: potentialFutures) {
+            netPotential += potentialContrib.get();
         }
         return netPotential;
     }
@@ -204,7 +225,7 @@ public class MolDy {
         }
     }
 
-    public static void main(String[] args) throws FileNotFoundException {
+    public static void main(String[] args) throws FileNotFoundException, ExecutionException, InterruptedException {
         long startTime = System.currentTimeMillis();
         PrintStream outputStream = new PrintStream(new BufferedOutputStream(new FileOutputStream(new File("out.xyz"))), false);
         ArrayList<Double> KE = new ArrayList<>(numTimeSteps / 2);
