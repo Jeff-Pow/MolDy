@@ -2,16 +2,16 @@ package org.drpowell.moldy;
 
 import java.io.*;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.HashMap;
 import java.util.Random;
 import java.lang.Math;
+import java.util.concurrent.Callable;
 
 public class MolDy {
 
     public static Random random = new Random(6345789);
 
-    public static class Atom {
+    public static class Atom implements Comparable<Atom> {
         public double positions[] = {0,0,0};
         public double accelerations[] = {0,0,0};
         public double oldAccelerations[] = {0,0,0};
@@ -23,6 +23,20 @@ public class MolDy {
             for (int i = 0; i < 3; i++) {
                 velocities[i] = random.nextGaussian();
             }
+        }
+
+        @Override
+        public int compareTo(Atom atom) {
+            if (this == atom) {
+                return 0;
+            }
+            for (int i = 0; i < 3; i++) {
+                int cmp = Double.compare(this.positions[i], atom.positions[i]);
+                if (cmp != 0) {
+                    return cmp;
+                }
+            }
+            return 0;
         }
     }
 
@@ -109,14 +123,12 @@ public class MolDy {
         return response;
     }
 
-    private static double calcForcesOnCell(int cellIndex, ArrayList<Atom> atoms, int[] header, int[] nextAtom) {
+    private static double calcForcesOnCell(int cellIndex, ArrayList<Atom> atoms, ArrayList<Atom> [] cellAtoms) {
         double localPotential = 0;
         int [] cellAddress = cellIndexToAddress(cellIndex);
         int [] neighborAddress = new int[3];
         int [] shiftedNeighbor = new int[3];
         double distanceVector[] = new double[3];
-
-        int pairsAffected = 0;
 
         // Scan neighbor cells including the one currently active
         for (neighborAddress[0] = cellAddress[0] - 1; neighborAddress[0] < cellAddress[0] + 2; neighborAddress[0]++) {
@@ -129,13 +141,9 @@ public class MolDy {
                     // Scalar index of neighboring cell
                     int neighborIndex = cellAddressToIndex(shiftedNeighbor);
 
-                    int i = header[cellIndex]; // Find the highest numbered atom in each cell
-                    while (i > -1) {
-                        Atom atomi = atoms.get(i);
-                        int j = header[neighborIndex]; // Scan atom with the largest index in neighboring cell c1
-                        while (j > -1) {
-                            if (i < j) { // Don't double count atoms (if i > j its already been counted)
-                                Atom atomj = atoms.get(j);
+                    for (Atom atomi : cellAtoms[cellIndex]) {
+                        for (Atom atomj : cellAtoms[neighborIndex]) {
+                            if (atomi.compareTo(atomj) < 0) { // Don't double count atoms (if i > j its already been counted)
                                 for (int k = 0; k < 3; k++) {
                                     // Apply boundary conditions
                                     distanceVector[k] = atomi.positions[k] - atomj.positions[k];
@@ -155,12 +163,9 @@ public class MolDy {
                                         atomi.accelerations[k] += (forceOverR * distanceVector[k] / MASS);
                                         atomj.accelerations[k] -= (forceOverR * distanceVector[k] / MASS);
                                     }
-                                    pairsAffected++;
                                 }
                             }
-                            j = nextAtom[j];
                         }
-                        i = nextAtom[i];
                     }
                 }
             }
@@ -174,26 +179,20 @@ public class MolDy {
         int [] cellAddress = new int[3];
         double netPotential = 0;
 
-        // header and nextAtom together make a linked list (possibly more performant than LinkedList?)
-        int [] header = new int[numCellsXYZ];
-        int [] nextAtom = new int[N];
-        for (cellIndex = 0; cellIndex < numCellsXYZ; cellIndex++) {
-            header[cellIndex] = -1;
+        ArrayList<Atom> [] cellAtoms = (ArrayList<Atom>[]) new ArrayList[numCellsXYZ];
+        for (int i = 0; i < numCellsXYZ; i++) {
+           cellAtoms[i] = new ArrayList<Atom>();
         }
 
-        int atomNum = 0;
         for (Atom a: atoms) {
             for (int i = 0; i < 3; i++) {
                 cellAddress[i] = (int) (a.positions[i] / cellLength);
             }
-            cellIndex = cellAddressToIndex(cellAddress);
-            nextAtom[atomNum] = header[cellIndex];
-            header[cellIndex] = atomNum;
-            atomNum++;
+            cellAtoms[cellAddressToIndex(cellAddress)].add(a);
         }
 
         for (cellIndex = 0; cellIndex < numCellsXYZ ; cellIndex++) {
-            netPotential += calcForcesOnCell(cellIndex, atoms, header, nextAtom);
+            netPotential += calcForcesOnCell(cellIndex, atoms, cellAtoms);
         }
         return netPotential;
     }
