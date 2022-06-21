@@ -203,7 +203,7 @@ void thermostat(std::vector<Atom> &atomList) {
     }
 }
 
-__global__
+// __global__
 double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList) {
     std::array<int, 3> mc1; // Array to keep track of neighboring cells
     std::array<double, 3> distArr; //
@@ -213,9 +213,9 @@ double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList) {
     auto cellArr = linkedList[c];
 
     // Scan neighbor cells including the one currently active
-    for (mc1[0] = cell[0] - 1; mc1[0] < cell[0] + 2; mc1[0]++) {
-        for (mc1[1] = cell[1] - 1; mc1[1] < cell[1] + 2; mc1[1]++) {
-            for (mc1[2] = cell[2] - 1; mc1[2] < cell[2] + 2; mc1[2]++) {
+    for (mc1[0] = cell[0]; mc1[0] < cell[0] + 2; mc1[0]++) {
+        for (mc1[1] = cell[1]; mc1[1] < cell[1] + 2; mc1[1]++) {
+            for (mc1[2] = cell[2]; mc1[2] < cell[2] + 2; mc1[2]++) {
 
                 for (int k = 0; k < 3; k++) { // Boundary conditions
                     shiftedNeighbor[k] = (mc1[k] + numCellsPerDirection) % numCellsPerDirection;
