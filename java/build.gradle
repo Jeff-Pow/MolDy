@@ -1,0 +1,29 @@
+apply plugin: 'java'
+apply plugin: 'application'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Use JUnit test framework.
+    // testImplementation 'junit:junit:4.13.2'
+
+    // For dependencies used by the application.
+    // implementation 'com.google.guava:guava:30.1.1-jre'
+}
+
+application {
+    // Define the main class for the application.
+    mainClass = 'org.drpowell.moldy.MolDy'
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'org.drpowell.moldy.MolDy'
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    baseName 'moldy'
+}

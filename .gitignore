@@ -1,4 +1,7 @@
 java/out
 java/out.xyz
+java/build
+java/.gradle
+java/.idea
 out.xyz
 *.dat
