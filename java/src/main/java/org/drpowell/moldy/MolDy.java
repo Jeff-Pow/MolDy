@@ -7,12 +7,16 @@ import java.util.List;
 import java.util.Random;
 import java.lang.Math;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class MolDy {
 
     public static Random random = new Random(6345789);
 
     public static class Atom implements Comparable<Atom> {
+        static final AtomicLong NEXT_ID = new AtomicLong(0);
+        final long id = NEXT_ID.getAndIncrement();
+
         public double positions[] = {0,0,0};
         public double accelerations[] = {0,0,0};
         public double oldAccelerations[] = {0,0,0};
@@ -27,7 +31,7 @@ public class MolDy {
         }
 
         @Override
-        public int compareTo(Atom atom) {
+        public final int compareTo(Atom atom) {
             if (this == atom) {
                 return 0;
             }
@@ -152,14 +156,20 @@ public class MolDy {
 
                     for (Atom atomi : cellAtoms[cellIndex]) {
                         for (Atom atomj : cellAtoms[neighborIndex]) {
-                            if (atomi.compareTo(atomj) < 0) { // Don't double count atoms (if i > j its already been counted)
+                            if (atomi.id < atomj.id) {
+                            /// if (atomi.compareTo(atomj) < 0) { // Don't double count atoms (if i > j its already been counted)
                                 for (int k = 0; k < 3; k++) {
                                     // Apply boundary conditions
                                     distanceVector[k] = atomi.positions[k] - atomj.positions[k];
+                                    while (distanceVector[k] >= L/2) {
+                                        distanceVector[k] -= L;
+                                    }
+                                    while (distanceVector[k] < -L/2) {
+                                        distanceVector[k] += L;
+                                    }
                                     //distanceVector[k] -= L * Math.round(distanceVector[k] / L);
-                                    distanceVector[k] -= L * Math.round(distanceVector[k] / L);
                                 }
-                                double r2 = dot(distanceVector, distanceVector); // Dot of distance vector between the two atoms
+                                double r2 = dot(distanceVector, distanceVector);
                                 if (r2 < rCutoffSquared) {
                                     double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
                                     double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
@@ -235,7 +245,7 @@ public class MolDy {
         ArrayList<Atom> atoms = faceCenteredCell(N, L);
         thermostat(atoms);
         for (int t = 0; t < numTimeSteps; t++) {
-            writePositions(outputStream, atoms, t);
+            // writePositions(outputStream, atoms, t);
             outputStream.flush();
 
             // update positions
@@ -246,6 +256,10 @@ public class MolDy {
                     atom.oldAccelerations[i] = atom.accelerations[i];
                 }
             }
+
+            int finalT = t;
+            executorService.execute( () -> writePositions(outputStream, atoms, finalT));
+
             double netPotential = 0;
             netPotential += calcForces(atoms);
 
@@ -292,5 +306,6 @@ public class MolDy {
         double PEstar = ((avgPE + Ulrc) / N) / EPS_STAR;
         System.out.println("Reduced potential with long range corrections: " + PEstar);
         System.out.println("Total time: " + ((System.currentTimeMillis() - startTime) / 1000.0) + " seconds");
+        executorService.shutdown();
     }
 }
