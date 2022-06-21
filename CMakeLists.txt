@@ -15,3 +15,4 @@ include_directories(.)
    #     twoatoms.cpp)
 #
 add_executable(MolDy multithread.cpp BS_thread_pool.hpp)
+add_executable(test array.cpp BS_thread_pool.hpp)
