@@ -37,12 +37,12 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 5000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 4000; // Number of atoms in simulation
+const int N = 32; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
 
-const double rhostar = .6; // Dimensionless density of gas
+const double rhostar = .05; // Dimensionless density of gas
 const double rho = rhostar / std::pow(SIGMA, 3); // Density of gas
 const double L = std::cbrt(N / rho); // Unit cell length
 const double rCutoff = SIGMA * 2.5; // Forces are negligible past this distance, not worth calculating
@@ -68,10 +68,9 @@ const int numCellsXYZ = numCellsYZ * numCellsPerDirection; // Number of cells in
 std::array<std::vector<int>, numCellsXYZ> linkedList;
 
 
-void writePositions(std::vector<Atom> &atomList, std::ofstream &positionFile, int i) {
+void writePositions(std::vector<Atom> &atomList, std::ofstream &positionFile, int i, std::ofstream &debug) {
     positionFile << N << "\nTime: " << i << "\n";
     //debug << "Time: " << i << "\n";
-
     for (int j = 0; j < N; ++j) { // Write positions to xyz file
         positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
         //debug << "Atom number: " << j << "\n";
@@ -85,11 +84,14 @@ void writePositions(std::vector<Atom> &atomList, std::ofstream &positionFile, in
 
 int main() {
     for (auto vect : linkedList) {
-        vect.reserve(N / numCellsXYZ + 20);
+        vect.reserve(N / numCellsXYZ + N * .005);
     }
     std::cout << "Cells per direction: " << numCellsPerDirection << std::endl;
+    std::cout << "Simulation length: " << L << std::endl;
+    std::cout << "Cell length: " << cellLength << std::endl;
     std::ofstream positionFile("out.xyz");
     std::ofstream debug("debug.dat");
+    debug << "I \t J \t C \t C1 \t R2 \t forceOverR \n";
     std::ofstream energyFile("Energy.dat");
 
     // Arrays to hold energy values at each step of the process
@@ -118,11 +120,11 @@ int main() {
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
 
         if (i > count * numTimeSteps) { // Percent progress
-            std::cout << count * 100 << "% \n";
+            // std::cout << count * 100 << "% \n";
             count += .01;
         }
 
-        writePositions(atomList, positionFile, i);
+        writePositions(atomList, positionFile, i, debug);
 
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
@@ -132,7 +134,15 @@ int main() {
                 atomList[k].oldAccelerations[j] = atomList[k].accelerations[j];
             }
         }
-        
+        for (int j = 0; j < N; j++) {
+            for (int k = 0; k < 3; k++) {
+                double x = atomList[j].accelerations[k];
+                if (x > 10 || x < -10 || x == 0) {
+                    int q = 0;
+                }
+            }
+        }
+
         netPotential = calcForces(atomList, debug); // Update accelerations and return potential of system
 
         totalVelSquared = 0;
@@ -161,8 +171,8 @@ int main() {
     }
 
     double avgPE = 0; // Average PE array
-    for (int i = 0; i < PE.size(); i++) {
-        avgPE += PE[i];
+    for (double i : PE) {
+        avgPE += i;
     }
     avgPE /= PE.size();
 
@@ -173,7 +183,7 @@ int main() {
     Ulrc *= (temp - temp1);
     double PEstar = ((avgPE + Ulrc) / N) / EPS_STAR; // Reduced potential energy
 
-    std::cout << " Reduced potential with long range correction: " << PEstar << std::endl;
+    std::cout << "Reduced potential with long range correction: " << PEstar << std::endl;
 
     positionFile.close();
     debug.close();
@@ -204,13 +214,14 @@ void thermostat(std::vector<Atom> &atomList) {
 }
 
 // __global__
-double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList) {
+double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std::ofstream &debug) {
     std::array<int, 3> mc1; // Array to keep track of neighboring cells
     std::array<double, 3> distArr; //
     std::array<int, 3> shiftedNeighbor; // Boundary conditions
     double netPotential = 0;
     int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
     auto cellArr = linkedList[c];
+    auto test = linkedList;
 
     // Scan neighbor cells including the one currently active
     for (mc1[0] = cell[0]; mc1[0] < cell[0] + 2; mc1[0]++) {
@@ -226,7 +237,7 @@ double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList) {
 
                 for (int i : cellArr) {
                     for (int j : neighborCellArr) {
-                        if (i < j) { // Don't double count atoms (if i > j its already been counted)
+                        if (i > j || c1 != c) { // Don't double count atoms (if i > j its already been counted)
                             for (int k = 0; k < 3; k++) {
                                 // Apply boundary conditions
                                 distArr[k] = atomList[i].positions[k] - atomList[j].positions[k];
@@ -239,9 +250,11 @@ double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList) {
                                 double sor12 = sor6 * sor6; // Sigma over r to the twelfth
 
                                 double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
+                                if (i == 7) {
+                                    debug << i << "\t" << j << "\t" << c << "\t" << c1 << "\t" << r2 << "\t" << forceOverR << "\n";
+                                }
                                 netPotential += 4 * EPS_STAR * (sor12 - sor6);
-                                // debug << i << " on " << j << ": " << forceOverR << "\n";
-
+                                //debug << i << " on " << j << ": " << forceOverR << "\n";
                                 for (int k = 0; k < 3; k++) {
                                     atomList[i].accelerations[k] += (forceOverR * distArr[k] / MASS);
                                     atomList[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
@@ -261,7 +274,6 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
     double netPotential = 0;
     int c; // Indexes of cell coordinates
     std::array<int, 3> cell; // Array to keep track of coordinates of a cell
-    std::array<double, 3>* velPointer;
 
     for (int j = 0; j < N; j++) { // Set all accelerations in every atom equal to zero
         for (int i = 0; i < 3; ++i) {
@@ -287,10 +299,11 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
             for  (cell[2] = 0; cell[2] < numCellsPerDirection; cell[2]++) {
                 // Calculate index of the current cell we're working in
                 int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
-                netPotential += calcForcesOnCell(cell, std::ref(atomList));
+                netPotential += calcForcesOnCell(cell, std::ref(atomList), std::ref(debug));
             }
         }
     }
+    debug << "----------\n";
     return netPotential;
 }
 

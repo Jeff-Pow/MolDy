@@ -15,12 +15,6 @@
 #include <mutex>
 #include "BS_thread_pool.hpp"
 
-/*
-#include "matplotlibcpp.h"
-#include "Python.h"
-namespace plt = matplotlibcpp;
-// If using graphing function, g++ moldy.cpp -I/usr/include/python3.10 -lpython3.10 -O2 otherwise comment it out
-*/
 
 struct Atom {
 public:
@@ -44,12 +38,12 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 5000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 4000; // Number of atoms in simulation
+const int N = 32; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
 
-const double rhostar = .6; // Dimensionless density of gas
+const double rhostar = .05; // Dimensionless density of gas
 const double rho = rhostar / std::pow(SIGMA, 3); // Density of gas
 const double L = std::cbrt(N / rho); // Unit cell length
 const double rCutoff = SIGMA * 2.5; // Forces are negligible past this distance, not worth calculating
