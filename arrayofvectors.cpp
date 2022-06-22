@@ -37,12 +37,12 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 5000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 32; // Number of atoms in simulation
+const int N = 256; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
 
-const double rhostar = .05; // Dimensionless density of gas
+const double rhostar = .45; // Dimensionless density of gas
 const double rho = rhostar / std::pow(SIGMA, 3); // Density of gas
 const double L = std::cbrt(N / rho); // Unit cell length
 const double rCutoff = SIGMA * 2.5; // Forces are negligible past this distance, not worth calculating
@@ -90,7 +90,7 @@ int main() {
     std::cout << "Simulation length: " << L << std::endl;
     std::cout << "Cell length: " << cellLength << std::endl;
     std::ofstream positionFile("out.xyz");
-    std::ofstream debug("debug.dat");
+    std::ofstream debug("ad.dat");
     debug << "I \t J \t C \t C1 \t R2 \t forceOverR \n";
     std::ofstream energyFile("Energy.dat");
 
@@ -134,16 +134,10 @@ int main() {
                 atomList[k].oldAccelerations[j] = atomList[k].accelerations[j];
             }
         }
-        for (int j = 0; j < N; j++) {
-            for (int k = 0; k < 3; k++) {
-                double x = atomList[j].accelerations[k];
-                if (x > 10 || x < -10 || x == 0) {
-                    int q = 0;
-                }
-            }
-        }
 
+        debug << "Time: " << i << std::endl;
         netPotential = calcForces(atomList, debug); // Update accelerations and return potential of system
+        debug << "----------\n";
 
         totalVelSquared = 0;
         for (int k = 0; k < N; ++k) { // Update velocities
@@ -250,11 +244,10 @@ double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, st
                                 double sor12 = sor6 * sor6; // Sigma over r to the twelfth
 
                                 double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
-                                if (i == 7) {
+                                if (i == 1 || j == 1) {
                                     debug << i << "\t" << j << "\t" << c << "\t" << c1 << "\t" << r2 << "\t" << forceOverR << "\n";
                                 }
                                 netPotential += 4 * EPS_STAR * (sor12 - sor6);
-                                //debug << i << " on " << j << ": " << forceOverR << "\n";
                                 for (int k = 0; k < 3; k++) {
                                     atomList[i].accelerations[k] += (forceOverR * distArr[k] / MASS);
                                     atomList[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
@@ -303,7 +296,6 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
             }
         }
     }
-    debug << "----------\n";
     return netPotential;
 }
 
