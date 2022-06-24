@@ -13,6 +13,7 @@
 #include <array>
 #include <thread>
 #include <mutex>
+#include "BS_thread_pool.hpp"
 
 
 struct Atom {
@@ -65,21 +66,71 @@ const int numCellsPerDirection = std::floor(L / targetCellLength);
 const double cellLength = L / numCellsPerDirection; // Side length of each cell
 const int numCellsYZ = numCellsPerDirection * numCellsPerDirection; // Number of cells in one plane
 const int numCellsXYZ = numCellsYZ * numCellsPerDirection; // Number of cells in the simulation
+BS::thread_pool pool(std::thread::hardware_concurrency() - 1);
+std::array<std::mutex, N> mutexes;
 std::array<std::vector<int>, numCellsXYZ> linkedList;
+std::array<std::vector<int>, numCellsXYZ> cellInteractionIndexes;
+std::ofstream test("test.dat");
 
 
 void writePositions(std::vector<Atom> &atomList, std::ofstream &positionFile, int i, std::ofstream &debug) {
     positionFile << N << "\nTime: " << i << "\n";
-    //debug << "Time: " << i << "\n";
     for (int j = 0; j < N; ++j) { // Write positions to xyz file
         positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-        //debug << "Atom number: " << j << "\n";
-        //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-        //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
-        //debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
-        //debug << "- \n";
     }
-    //debug << "------------------------------------------------- \n";
+}
+
+int calcCellIndex(int x, int y, int z) {
+    return x * numCellsYZ + y * numCellsPerDirection + z;
+}
+
+std::array<int, 3> calcCellFromIndex(int index) {
+    std::array<int, 3> arr;
+    arr[0] = index / numCellsYZ;
+    int remainder = index % numCellsYZ;
+    arr[1] = remainder / numCellsPerDirection;
+    arr[2] = remainder % numCellsPerDirection;
+    return arr;
+}
+std::array<int, 3> shiftNeighbor(int x, int y, int z) {
+    std::array<int, 3> arr;
+    arr[0] = (x + numCellsPerDirection) % numCellsPerDirection;
+    arr[1] = (y + numCellsPerDirection) % numCellsPerDirection;
+    arr[2] = (z + numCellsPerDirection) % numCellsPerDirection;
+    return arr;
+}
+
+int processCell(int x, int y, int z) {
+    std::array<int, 3> shiftedNeighbor = shiftNeighbor(x, y, z);
+    int index = calcCellIndex(shiftedNeighbor[0], shiftedNeighbor[1], shiftedNeighbor[2]);
+    return index;
+}
+
+void calcCellInteractions() {
+    std::array<int, 3> shiftedNeighbor;
+    for (int i = 0; i < numCellsXYZ; i++) {
+        std::vector<int> arr;
+        std::array<int, 3> cell = calcCellFromIndex(i);
+
+        arr.push_back(processCell(cell[0], cell[1], cell[2]));
+        arr.push_back(processCell(cell[0], cell[1], cell[2] + 1));
+        arr.push_back(processCell(cell[0], cell[1] + 1, cell[2] - 1));
+        arr.push_back(processCell(cell[0], cell[1] + 1, cell[2]));
+        arr.push_back(processCell(cell[0], cell[1] + 1, cell[2] + 1));
+
+        // Next level above
+        arr.push_back(processCell(cell[0] + 1, cell[1] - 1, cell[2] - 1));
+        arr.push_back(processCell(cell[0] + 1, cell[1] - 1, cell[2]));
+        arr.push_back(processCell(cell[0] + 1, cell[1] - 1, cell[2] + 1));
+        arr.push_back(processCell(cell[0] + 1, cell[1], cell[2] - 1));
+        arr.push_back(processCell(cell[0] + 1, cell[1], cell[2]));
+        arr.push_back(processCell(cell[0] + 1, cell[1], cell[2] + 1));
+        arr.push_back(processCell(cell[0] + 1, cell[1] + 1, cell[2] - 1));
+        arr.push_back(processCell(cell[0] + 1, cell[1] + 1, cell[2]));
+        arr.push_back(processCell(cell[0] + 1, cell[1] + 1, cell[2] + 1));
+
+        cellInteractionIndexes[i] = arr;
+    }
 }
 
 int main() {
@@ -92,9 +143,11 @@ int main() {
     std::cout << "Cell length: " << cellLength << std::endl;
 
     std::ofstream positionFile("out.xyz");
-    std::ofstream debug("wd.dat");
+    std::ofstream debug("debug.dat");
     debug << "I \t J \t C \t C1 \t R2 \t forceOverR \n";
     std::ofstream energyFile("Energy.dat");
+
+    calcCellInteractions();
 
     // Arrays to hold energy values at each step of the process
     std::vector<double> KE;
@@ -122,7 +175,7 @@ int main() {
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
 
         if (i > count * numTimeSteps) { // Percent progress
-            // std::cout << count * 100 << "% \n";
+            std::cout << count * 100 << "% \n";
             count += .01;
         }
 
@@ -210,57 +263,42 @@ void thermostat(std::vector<Atom> &atomList) {
 }
 
 // __global__
-double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std::ofstream &debug) {
+double calcForcesOnCell(int c, std::vector<Atom> &atomList, std::ofstream &debug) {
     std::array<int, 3> mc1; // Array to keep track of neighboring cells
     std::array<double, 3> distArr; //
     std::array<int, 3> shiftedNeighbor; // Boundary conditions
     double netPotential = 0;
-    int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
     auto cellArr = linkedList[c];
-    auto test = linkedList;
 
     // Scan neighbor cells including the one currently active
-    for (mc1[0] = cell[0] - 1; mc1[0] < cell[0] + 2; mc1[0]++) {
-        for (mc1[1] = cell[1] - 1; mc1[1] < cell[1] + 2; mc1[1]++) {
-            for (mc1[2] = cell[2] - 1; mc1[2] < cell[2] + 2; mc1[2]++) {
 
-                for (int k = 0; k < 3; k++) { // Boundary conditions
-                    shiftedNeighbor[k] = (mc1[k] + numCellsPerDirection) % numCellsPerDirection;
-                }
-                // Scalar index of neighboring cell
-                int c1 = shiftedNeighbor[0] * numCellsYZ + shiftedNeighbor[1] * numCellsPerDirection + shiftedNeighbor[2];
-                auto neighborCellArr = linkedList[c1];
+    for (int c1 : cellInteractionIndexes[c]) {
+        auto neighborCellArr = linkedList[c1];
 
-                if (c == 25) {
-                    debug << c << " on " << c1 << "\t" << cell[0] << " " << cell[1] << " " << cell[2] << 
-                            " " << mc1[0] << " " << mc1[1] << " " << mc1[2] << "\n";
-                    debug << "-\n";
-                }
-                for (int i : cellArr) {
-                    for (int j : neighborCellArr) {
-                        if (i < j) { // Don't double count atoms (if i > j its already been counted)
-                            for (int k = 0; k < 3; k++) {
-                                // Apply boundary conditions
-                                distArr[k] = atomList[i].positions[k] - atomList[j].positions[k];
-                                distArr[k] -= L * std::round(distArr[k] / L);
-                            }
-                            double r2 = dot(distArr[0], distArr[1], distArr[2]); // Dot of distance vector between the two atoms
-                            if (r2 < rCutoffSquared) {
-                                double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
-                                double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
-                                double sor12 = sor6 * sor6; // Sigma over r to the twelfth
+        for (int i: cellArr) {
+            for (int j: neighborCellArr) {
+                if (i < j || c != c1) { // Don't double count atoms (if i > j its already been counted)
+                    for (int k = 0; k < 3; k++) {
+                        // Apply boundary conditions
+                        distArr[k] = atomList[i].positions[k] - atomList[j].positions[k];
+                        distArr[k] -= L * std::round(distArr[k] / L);
+                    }
+                    double r2 = dot(distArr[0], distArr[1], distArr[2]); // Dot of distance vector between the two atoms
+                    if (r2 < rCutoffSquared) {
+                        double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
+                        double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
+                        double sor12 = sor6 * sor6; // Sigma over r to the twelfth
 
-                                double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
-                                if (c == 25 || c1 == 25) {
-                                    //debug << i << "\t" << j << "\t" << c << "\t" << c1 << "\t" << r2 << "\t" << forceOverR << "\n";
-                                }
-                                netPotential += 4 * EPS_STAR * (sor12 - sor6);
-                                for (int k = 0; k < 3; k++) {
-                                    atomList[i].accelerations[k] += (forceOverR * distArr[k] / MASS);
-                                    atomList[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
-                                }
-                            }
+                        double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
+                        netPotential += 4 * EPS_STAR * (sor12 - sor6);
+                        mutexes[i].lock();
+                        mutexes[j].lock();
+                        for (int k = 0; k < 3; k++) {
+                            atomList[i].accelerations[k] += (forceOverR * distArr[k] / MASS);
+                            atomList[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
                         }
+                        mutexes[i].unlock();
+                        mutexes[j].unlock();
                     }
                 }
             }
@@ -286,7 +324,7 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
     }
 
     for (int i = 0; i < N; i++) {
-        for (int j = 0; j < 3; j++) { 
+        for (int j = 0; j < 3; j++) {
             cell[j] = atomList[i].positions[j] / cellLength; // Find the coordinates of a cell an atom belongs to
         }
         // Turn coordinates of cell into a cell index for the header array
@@ -294,14 +332,12 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
         linkedList[c].push_back(i);
     }
 
-    for  (cell[0] = 0; cell[0] < numCellsPerDirection; cell[0]++) { // Calculate coordinates of a cell to work in
-        for  (cell[1] = 0; cell[1] <  numCellsPerDirection; cell[1]++) {
-            for  (cell[2] = 0; cell[2] < numCellsPerDirection; cell[2]++) {
-                // Calculate index of the current cell we're working in
-                int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
-                netPotential += calcForcesOnCell(cell, std::ref(atomList), std::ref(debug));
-            }
-        }
+    std::future<double> potentialArr[numCellsXYZ];
+    for (int c = 0; c < numCellsXYZ; c++) {
+        potentialArr[c] = pool.submit(calcForcesOnCell, c, std::ref(atomList), std::ref(debug));
+    }
+    for (int i = 0; i < numCellsXYZ; i++) {
+        netPotential += potentialArr[i].get();
     }
     return netPotential;
 }
