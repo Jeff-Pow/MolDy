@@ -37,7 +37,7 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 5000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 256; // Number of atoms in simulation
+const int N = 4000; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -262,24 +262,18 @@ void thermostat(std::vector<Atom> &atomList) {
 }
 
 // __global__
-double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std::ofstream &debug) {
+double calcForcesOnCell(int c, std::vector<Atom> &atomList, std::ofstream &debug) {
     std::array<int, 3> mc1; // Array to keep track of neighboring cells
     std::array<double, 3> distArr; //
     std::array<int, 3> shiftedNeighbor; // Boundary conditions
     double netPotential = 0;
-    int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
     auto cellArr = linkedList[c];
-    auto test = linkedList;
 
     // Scan neighbor cells including the one currently active
 
     for (int c1 : cellInteractionIndexes[c]) {
         auto neighborCellArr = linkedList[c1];
-        if (c == 25) {
-            debug << c << " on " << c1 << "\t" << cell[0] << " " << cell[1] << " " << cell[2] <<
-                  " " << mc1[0] << " " << mc1[1] << " " << mc1[2] << "\n";
-            debug << "-\n";
-        }
+
         for (int i: cellArr) {
             for (int j: neighborCellArr) {
                 if (i < j || c != c1) { // Don't double count atoms (if i > j its already been counted)
@@ -328,7 +322,7 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
     }
 
     for (int i = 0; i < N; i++) {
-        for (int j = 0; j < 3; j++) { 
+        for (int j = 0; j < 3; j++) {
             cell[j] = atomList[i].positions[j] / cellLength; // Find the coordinates of a cell an atom belongs to
         }
         // Turn coordinates of cell into a cell index for the header array
@@ -336,14 +330,8 @@ double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell p
         linkedList[c].push_back(i);
     }
 
-    for  (cell[0] = 0; cell[0] < numCellsPerDirection; cell[0]++) { // Calculate coordinates of a cell to work in
-        for  (cell[1] = 0; cell[1] <  numCellsPerDirection; cell[1]++) {
-            for  (cell[2] = 0; cell[2] < numCellsPerDirection; cell[2]++) {
-                // Calculate index of the current cell we're working in
-                int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
-                netPotential += calcForcesOnCell(cell, std::ref(atomList), std::ref(debug));
-            }
-        }
+    for (int c = 0; c < numCellsXYZ; c++) {
+        netPotential += calcForcesOnCell(c, std::ref(atomList), std::ref(debug));
     }
     return netPotential;
 }
