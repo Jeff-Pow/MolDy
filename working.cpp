@@ -90,7 +90,7 @@ int main() {
     std::cout << "Simulation length: " << L << std::endl;
     std::cout << "Cell length: " << cellLength << std::endl;
     std::ofstream positionFile("out.xyz");
-    std::ofstream debug("ad.dat");
+    std::ofstream debug("wd.dat");
     debug << "I \t J \t C \t C1 \t R2 \t forceOverR \n";
     std::ofstream energyFile("Energy.dat");
 
@@ -218,9 +218,9 @@ double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, st
     auto test = linkedList;
 
     // Scan neighbor cells including the one currently active
-    for (mc1[0] = cell[0]; mc1[0] < cell[0] + 2; mc1[0]++) {
-        for (mc1[1] = cell[1]; mc1[1] < cell[1] + 2; mc1[1]++) {
-            for (mc1[2] = cell[2]; mc1[2] < cell[2] + 2; mc1[2]++) {
+    for (mc1[0] = cell[0] - 1; mc1[0] < cell[0] + 2; mc1[0]++) {
+        for (mc1[1] = cell[1] - 1; mc1[1] < cell[1] + 2; mc1[1]++) {
+            for (mc1[2] = cell[2] - 1; mc1[2] < cell[2] + 2; mc1[2]++) {
 
                 for (int k = 0; k < 3; k++) { // Boundary conditions
                     shiftedNeighbor[k] = (mc1[k] + numCellsPerDirection) % numCellsPerDirection;
@@ -228,15 +228,15 @@ double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, st
                 // Scalar index of neighboring cell
                 int c1 = shiftedNeighbor[0] * numCellsYZ + shiftedNeighbor[1] * numCellsPerDirection + shiftedNeighbor[2];
                 auto neighborCellArr = linkedList[c1];
-                
-                if (c == 25 || c1 == 25) {
+
+                if (c == 25) {
                     debug << c << " on " << c1 << "\t" << cell[0] << " " << cell[1] << " " << cell[2] << 
                             " " << mc1[0] << " " << mc1[1] << " " << mc1[2] << "\n";
                     debug << "-\n";
                 }
                 for (int i : cellArr) {
                     for (int j : neighborCellArr) {
-                        if (i > j || c1 != c) { // Don't double count atoms (if i > j its already been counted)
+                        if (i < j) { // Don't double count atoms (if i > j its already been counted)
                             for (int k = 0; k < 3; k++) {
                                 // Apply boundary conditions
                                 distArr[k] = atomList[i].positions[k] - atomList[j].positions[k];
