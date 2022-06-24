@@ -66,21 +66,15 @@ const double cellLength = L / numCellsPerDirection; // Side length of each cell
 const int numCellsYZ = numCellsPerDirection * numCellsPerDirection; // Number of cells in one plane
 const int numCellsXYZ = numCellsYZ * numCellsPerDirection; // Number of cells in the simulation
 std::array<std::vector<int>, numCellsXYZ> linkedList;
-std::array<std::array<int, 14>, numCellsXYZ> cellInteractionIndexes;
+std::array<std::vector<int>, numCellsXYZ> cellInteractionIndexes;
+std::ofstream test("test.dat");
 
 
 void writePositions(std::vector<Atom> &atomList, std::ofstream &positionFile, int i, std::ofstream &debug) {
     positionFile << N << "\nTime: " << i << "\n";
-    //debug << "Time: " << i << "\n";
     for (int j = 0; j < N; ++j) { // Write positions to xyz file
         positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-        //debug << "Atom number: " << j << "\n";
-        //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-        //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
-        //debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
-        //debug << "- \n";
     }
-    //debug << "------------------------------------------------- \n";
 }
 
 int calcCellIndex(int x, int y, int z) {
@@ -95,46 +89,45 @@ std::array<int, 3> calcCellFromIndex(int index) {
     arr[2] = remainder % numCellsPerDirection;
     return arr;
 }
+std::array<int, 3> shiftNeighbor(int x, int y, int z) {
+    std::array<int, 3> arr;
+    arr[0] = (x + numCellsPerDirection) % numCellsPerDirection;
+    arr[1] = (y + numCellsPerDirection) % numCellsPerDirection;
+    arr[2] = (z + numCellsPerDirection) % numCellsPerDirection;
+    return arr;
+}
 
-void calcCellInteractions(std::ofstream &test) {
+int processCell(int x, int y, int z) {
+    std::array<int, 3> shiftedNeighbor = shiftNeighbor(x, y, z);
+    int index = calcCellIndex(shiftedNeighbor[0], shiftedNeighbor[1], shiftedNeighbor[2]);
+    return index;
+}
+
+void calcCellInteractions() {
     std::array<int, 3> shiftedNeighbor;
     for (int i = 0; i < numCellsXYZ; i++) {
-        std::array<int, 14> arr;
+        std::vector<int> arr;
         std::array<int, 3> cell = calcCellFromIndex(i);
-        int index = 0;
-        shiftedNeighbor[0] = (cell[0] + numCellsPerDirection) % numCellsPerDirection;
-        for (int j = cell[1]; j < cell[1] + 2; j++) {
-            shiftedNeighbor[1] = (j + numCellsPerDirection) % numCellsPerDirection;
-            for (int k = cell[2]; k < cell[2] + 2; k++) {
-                shiftedNeighbor[2] = (k + numCellsPerDirection) % numCellsPerDirection;
-                arr[index] = calcCellIndex(shiftedNeighbor[0], shiftedNeighbor[1], cell[2]);
-                if (arr[index] == 25 || i == 25) {
-                    test << i << " on " << arr[index] << "\t" << cell[0] << " " << cell[1] << " " << cell[2] <<
-                         " " << shiftedNeighbor[0] << " " << shiftedNeighbor[1] << " " << shiftedNeighbor[2] << "\n";
-                    test << "-\n";
-                }
-                index++;
-            }
-        }
-        arr[index++] = calcCellIndex(cell[0], cell[1] - 1, cell[2] + 1);
-        cell[0] += 1;
-        shiftedNeighbor[0] = (cell[0] + numCellsPerDirection) % numCellsPerDirection;
-        for (int j = cell[1] - 1; j < cell[1] + 2; j++) {
-            shiftedNeighbor[1] = (j + numCellsPerDirection) % numCellsPerDirection;
-            for (int k = cell[2] - 1; k < cell[2] + 2; k++) {
-                shiftedNeighbor[2] = (k + numCellsPerDirection) % numCellsPerDirection;
-                arr[index] = calcCellIndex(shiftedNeighbor[0], shiftedNeighbor[1], shiftedNeighbor[2]);
-                if (arr[index] == 25 || i == 25) {
-                    test << i << " on " << arr[index] << "\t" << cell[0] << " " << cell[1] << " " << cell[2] <<
-                          " " << shiftedNeighbor[0] << " " << shiftedNeighbor[1] << " " << shiftedNeighbor[2] << "\n";
-                    test << "-\n";
-                }
-                index++;
-            }
-        }
+
+        arr.push_back(processCell(cell[0], cell[1], cell[2]));
+        arr.push_back(processCell(cell[0], cell[1], cell[2] + 1));
+        arr.push_back(processCell(cell[0], cell[1] + 1, cell[2] - 1));
+        arr.push_back(processCell(cell[0], cell[1] + 1, cell[2]));
+        arr.push_back(processCell(cell[0], cell[1] + 1, cell[2] + 1));
+
+        // Next level above
+        arr.push_back(processCell(cell[0] + 1, cell[1] - 1, cell[2] - 1));
+        arr.push_back(processCell(cell[0] + 1, cell[1] - 1, cell[2]));
+        arr.push_back(processCell(cell[0] + 1, cell[1] - 1, cell[2] + 1));
+        arr.push_back(processCell(cell[0] + 1, cell[1], cell[2] - 1));
+        arr.push_back(processCell(cell[0] + 1, cell[1], cell[2]));
+        arr.push_back(processCell(cell[0] + 1, cell[1], cell[2] + 1));
+        arr.push_back(processCell(cell[0] + 1, cell[1] + 1, cell[2] - 1));
+        arr.push_back(processCell(cell[0] + 1, cell[1] + 1, cell[2]));
+        arr.push_back(processCell(cell[0] + 1, cell[1] + 1, cell[2] + 1));
+
         cellInteractionIndexes[i] = arr;
     }
-
 }
 
 int main() {
@@ -147,15 +140,12 @@ int main() {
     std::cout << "Cell length: " << cellLength << std::endl;
 
     std::ofstream positionFile("out.xyz");
-    std::ofstream debug("wd.dat");
+    std::ofstream debug("debug.dat");
     debug << "I \t J \t C \t C1 \t R2 \t forceOverR \n";
     std::ofstream energyFile("Energy.dat");
-    std::ofstream test("test.dat");
 
     //test << "C\tmc[0]\tmc[1]\tmc[2]\tC1\tmc1[0]\tmc1[1]\tmc1[2]";
-    calcCellInteractions(test);
-    test.close();
-    exit(10);
+    calcCellInteractions();
 
 
     // Arrays to hold energy values at each step of the process

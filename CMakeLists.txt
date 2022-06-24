@@ -14,5 +14,7 @@ include_directories(.)
   #      refactor.cpp
    #     twoatoms.cpp)
 #
-add_executable(MolDy multithread.cpp BS_thread_pool.hpp)
+add_executable(multithread multithread.cpp BS_thread_pool.hpp)
 add_executable(arrayofvectors arrayofvectors.cpp)
+add_executable(working working.cpp)
+add_executable(noloops noloops.cpp)

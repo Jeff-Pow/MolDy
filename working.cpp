@@ -66,7 +66,6 @@ const double cellLength = L / numCellsPerDirection; // Side length of each cell
 const int numCellsYZ = numCellsPerDirection * numCellsPerDirection; // Number of cells in one plane
 const int numCellsXYZ = numCellsYZ * numCellsPerDirection; // Number of cells in the simulation
 std::array<std::vector<int>, numCellsXYZ> linkedList;
-std::array<std::array<int, 14>, numCellsXYZ> cellInteractionIndexes;
 
 
 void writePositions(std::vector<Atom> &atomList, std::ofstream &positionFile, int i, std::ofstream &debug) {
@@ -83,45 +82,10 @@ void writePositions(std::vector<Atom> &atomList, std::ofstream &positionFile, in
     //debug << "------------------------------------------------- \n";
 }
 
-int calcCellIndex(int x, int y, int z) {return x * numCellsYZ + y * numCellsPerDirection + z;}
-
-std::array<int, 3> calcCellFromIndex(int index) {
-    std::array<int, 3> arr;
-    arr[0] = index / numCellsYZ;
-    int remainder = index % numCellsYZ;
-    arr[1] = remainder / numCellsPerDirection;
-    arr[2] = remainder % numCellsPerDirection;
-    return arr;
-}
-
-void calcCellInteractions() {
-    for (int i = 0; i < numCellsXYZ; i++) {
-        std::array<int, 14> arr;
-        std::array<int, 3> cell = calcCellFromIndex(i);
-        int index = 0;
-        for (int j = cell[0]; j < cell[0] + 2; j++) {
-            for (int k = cell[1]; k < cell[1] + 2; k++) {
-                arr[index++] = calcCellIndex(j, k, cell[2]);
-            }
-        }
-        arr[index++] = calcCellIndex(cell[0] + 1, cell[1] - 1, cell[2]);
-        cell[2] += 1;
-        for (int j = cell[0] - 1; j < cell[0] + 2; j++) {
-            for (int k = cell[1] - 1; k < cell[1] + 2; k++) {
-                arr[index++] = calcCellIndex(j, k, cell[2]);
-            }
-        }
-        std::cout << "index: " << index << std::endl;
-        cellInteractionIndexes[i] = arr;
-    }
-}
-
 int main() {
     for (auto vect : linkedList) {
         vect.reserve(N / numCellsXYZ + N * .005);
     }
-    calcCellInteractions();
-    exit(1);
 
     std::cout << "Cells per direction: " << numCellsPerDirection << std::endl;
     std::cout << "Simulation length: " << L << std::endl;
