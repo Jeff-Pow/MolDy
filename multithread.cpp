@@ -38,7 +38,7 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 5000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 256; // Number of atoms in simulation
+const int N = 4000; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -61,8 +61,8 @@ std::vector<Atom> faceCenteredCell();
 std::vector<Atom> simpleCubicCell();
 void radialDistribution();
 
-//BS::thread_pool pool(std::thread::hardware_concurrency() - 1);
-BS::thread_pool pool(1);
+BS::thread_pool pool(std::thread::hardware_concurrency() - 1);
+//BS::thread_pool pool(1);
 std::array<std::mutex, N> mutexes;
 
 const double targetCellLength = rCutoff;
@@ -123,7 +123,7 @@ int main() {
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
 
         if (i > count * numTimeSteps) { // Percent progress
-            // std::cout << count * 100 << "% \n";
+            std::cout << count * 100 << "% \n";
             count += .01;
         }
 
@@ -138,9 +138,7 @@ int main() {
             }
         }
 
-        debug << "Time: " << i << std::endl;
         netPotential = calcForces(atomList, debug); // Update accelerations and return potential of system
-        debug << "----------\n";
 
         totalVelSquared = 0;
         for (int k = 0; k < N; ++k) { // Update velocities
@@ -245,9 +243,6 @@ double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, st
                                 double sor12 = sor6 * sor6; // Sigma over r to the twelfth
 
                                 double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
-                                if (i == 1) {
-                                    debug << i << "\t" << j << "\t" << c << "\t" << c1 << "\t" << r2 << "\t" << forceOverR << "\n";
-                                }
                                 netPotential += 4 * EPS_STAR * (sor12 - sor6);
 
                                 mutexes[i].lock();
