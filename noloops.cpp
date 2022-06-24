@@ -174,7 +174,7 @@ int main() {
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
 
         if (i > count * numTimeSteps) { // Percent progress
-            // std::cout << count * 100 << "% \n";
+            std::cout << count * 100 << "% \n";
             count += .01;
         }
 
@@ -272,46 +272,36 @@ double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, st
     auto test = linkedList;
 
     // Scan neighbor cells including the one currently active
-    for (mc1[0] = cell[0] - 1; mc1[0] < cell[0] + 2; mc1[0]++) {
-        for (mc1[1] = cell[1] - 1; mc1[1] < cell[1] + 2; mc1[1]++) {
-            for (mc1[2] = cell[2] - 1; mc1[2] < cell[2] + 2; mc1[2]++) {
 
-                for (int k = 0; k < 3; k++) { // Boundary conditions
-                    shiftedNeighbor[k] = (mc1[k] + numCellsPerDirection) % numCellsPerDirection;
-                }
-                // Scalar index of neighboring cell
-                int c1 = shiftedNeighbor[0] * numCellsYZ + shiftedNeighbor[1] * numCellsPerDirection + shiftedNeighbor[2];
-                auto neighborCellArr = linkedList[c1];
+    for (int c1 : cellInteractionIndexes[c]) {
+        auto neighborCellArr = linkedList[c1];
+        if (c == 25) {
+            debug << c << " on " << c1 << "\t" << cell[0] << " " << cell[1] << " " << cell[2] <<
+                  " " << mc1[0] << " " << mc1[1] << " " << mc1[2] << "\n";
+            debug << "-\n";
+        }
+        for (int i: cellArr) {
+            for (int j: neighborCellArr) {
+                if (i < j || c != c1) { // Don't double count atoms (if i > j its already been counted)
+                    for (int k = 0; k < 3; k++) {
+                        // Apply boundary conditions
+                        distArr[k] = atomList[i].positions[k] - atomList[j].positions[k];
+                        distArr[k] -= L * std::round(distArr[k] / L);
+                    }
+                    double r2 = dot(distArr[0], distArr[1], distArr[2]); // Dot of distance vector between the two atoms
+                    if (r2 < rCutoffSquared) {
+                        double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
+                        double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
+                        double sor12 = sor6 * sor6; // Sigma over r to the twelfth
 
-                if (c == 25) {
-                    debug << c << " on " << c1 << "\t" << cell[0] << " " << cell[1] << " " << cell[2] << 
-                            " " << mc1[0] << " " << mc1[1] << " " << mc1[2] << "\n";
-                    debug << "-\n";
-                }
-                for (int i : cellArr) {
-                    for (int j : neighborCellArr) {
-                        if (i < j) { // Don't double count atoms (if i > j its already been counted)
-                            for (int k = 0; k < 3; k++) {
-                                // Apply boundary conditions
-                                distArr[k] = atomList[i].positions[k] - atomList[j].positions[k];
-                                distArr[k] -= L * std::round(distArr[k] / L);
-                            }
-                            double r2 = dot(distArr[0], distArr[1], distArr[2]); // Dot of distance vector between the two atoms
-                            if (r2 < rCutoffSquared) {
-                                double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
-                                double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
-                                double sor12 = sor6 * sor6; // Sigma over r to the twelfth
-
-                                double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
-                                if (c == 25 || c1 == 25) {
-                                    //debug << i << "\t" << j << "\t" << c << "\t" << c1 << "\t" << r2 << "\t" << forceOverR << "\n";
-                                }
-                                netPotential += 4 * EPS_STAR * (sor12 - sor6);
-                                for (int k = 0; k < 3; k++) {
-                                    atomList[i].accelerations[k] += (forceOverR * distArr[k] / MASS);
-                                    atomList[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
-                                }
-                            }
+                        double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
+                        if (c == 25 || c1 == 25) {
+                            //debug << i << "\t" << j << "\t" << c << "\t" << c1 << "\t" << r2 << "\t" << forceOverR << "\n";
+                        }
+                        netPotential += 4 * EPS_STAR * (sor12 - sor6);
+                        for (int k = 0; k < 3; k++) {
+                            atomList[i].accelerations[k] += (forceOverR * distArr[k] / MASS);
+                            atomList[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
                         }
                     }
                 }
