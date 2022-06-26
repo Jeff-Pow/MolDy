@@ -72,7 +72,8 @@ const int numCellsPerDirection = std::floor(L / targetCellLength);
 const double cellLength = L / numCellsPerDirection; // Side length of each cell
 const int numCellsYZ = numCellsPerDirection * numCellsPerDirection; // Number of cells in one plane
 const int numCellsXYZ = numCellsYZ * numCellsPerDirection; // Number of cells in the simulation
-BS::thread_pool pool(std::thread::hardware_concurrency() - 1);
+//BS::thread_pool pool(std::thread::hardware_concurrency() - 1);
+BS::thread_pool pool(1);
 std::array<std::mutex, N> mutexes;
 std::array<std::vector<int>, numCellsXYZ> linkedList;
 std::array<std::vector<int>, numCellsXYZ> cellInteractionIndexes;
@@ -283,6 +284,7 @@ double calcForcesOnCell(int c, std::vector<Atom>& atomList, std::ofstream& debug
         auto neighborCellArr = linkedList[c1];
 
         for (int i : cellArr) {
+            auto updatei = accelUpdates[i];
             for (int j : neighborCellArr) {
                 if (i < j || c != c1) { // Don't double count atoms (if i > j its already been counted)
                     for (int k = 0; k < 3; k++) {
@@ -299,18 +301,19 @@ double calcForcesOnCell(int c, std::vector<Atom>& atomList, std::ofstream& debug
                         double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
                         netPotential += 4 * EPS_STAR * (sor12 - sor6);
                         double accelFactor = forceOverR / MASS;
-                        auto updatei = accelUpdates[i];
                         auto updatej = accelUpdates[j];
                         for (int k = 0; k < 3; k++) {
-                            updatei.update[k] += accelFactor * distArr[k];
-                            updatej.update[k] -= accelFactor * distArr[k];
+                            updatei.update[k] += distArr[k] * accelFactor;
+                            updatej.update[k] -= distArr[k] * accelFactor;
                         }
-
+                        accelUpdates[j] = updatej;
                     }
                 }
             }
+            accelUpdates[i] = updatei;
         }
     }
+
     for (auto updatePair : accelUpdates) {
         mutexes[updatePair.first].lock();
         for (int k = 0; k < 3; k++) {
