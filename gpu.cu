@@ -311,6 +311,9 @@ double calcForces(std::vector<Atom> &atomList, std::vector<std::vector<int>> &ce
     std::array<int, 3> cell; // Array to keep track of coordinates of a cell
     int numCellsYZ = numCellsPerDirection * numCellsPerDirection;
     int numCellsXYZ = numCellsPerDirection * numCellsPerDirection * numCellsPerDirection;
+    cudaMallocManaged(&atomList, N * sizeof(Atom));
+    cudaMallocManaged(&cellInteractionIndexes, sizeof(cellInteractionIndexes[0] * numCellsXYZ));
+    cudaMallocManaged(&atomsInCells, N * sizeof(int));
 
     for (int j = 0; j < N; j++) { // Set all accelerations equal to zero
         for (int i = 0; i < 3; ++i) {
@@ -335,6 +338,9 @@ double calcForces(std::vector<Atom> &atomList, std::vector<std::vector<int>> &ce
          calcForcesOnCell<<<1, 1>>>(c, atomList, cellInteractionIndexes, atomsInCells);
     }
     cudaDeviceSynchronize();
+    cudaFree(atomList);
+    cudaFree(cellInteractionIndexes);
+    cudaFree(atomsInCells);
     return netPotential;
 }
 
