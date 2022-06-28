@@ -271,22 +271,21 @@ void thermostat(thrust::host_vector<Atom> &atomList) {
 }
 
 __global__
-void calcForcesOnCell(int cellI, thrust::device_vector<Atom> &gpuAtom, int (&cellInteractionIndexes)[343][14], thrust::device_vector<thrust::device_vector<int>> &atomsInCells) {
+void calcForcesOnCell(int cellI, thrust::device_vector<Atom> &gpuAtom, int (&cellInteractionIndexes)[343][14], thrust::device_vector<int> header, thrust::device_vector<int> pointerArr) {
     double distArr[3]; // Record distance between atoms
     double netPotential = 0;
-    auto cellArr = atomsInCells[cellI];
     double r2;
 
     // Scan neighbor cells including the one currently active
     for (int cellJ : cellInteractionIndexes[cellI]) {
-        auto neighborCellArr = atomsInCells[cellJ];
-
-        for (int atomi : cellArr) {
-            for (int atomj : neighborCellArr) {
-                if (atomi < atomj || cellI != cellJ) { // Don't double count atoms (if i > j its already been counted)
+    int i = header[cellI];
+        while (i > -1) {
+            int j = header[cellJ];
+            while (j > -1) {
+                if (i < j) {
                     for (int k = 0; k < 3; k++) {
                         // Apply boundary conditions
-                        distArr[k] = gpuAtom[atomi].positions[k] - gpuAtom[atomj].positions[k];
+                        distArr[k] = gpuAtom[i].positions[k] - gpuAtom[j].positions[k];
                         distArr[k] -= L * std::round(distArr[k] / L);
                     }
                     dotForGPU(distArr[0], distArr[1], distArr[2], r2); // Dot of distance vector between the two atoms
@@ -298,8 +297,8 @@ void calcForcesOnCell(int cellI, thrust::device_vector<Atom> &gpuAtom, int (&cel
                         double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
                         netPotential += 4 * EPS_STAR * (sor12 - sor6);
                         for (int k = 0; k < 3; k++) {
-                            gpuAtom[atomi].accelerations[k] += (forceOverR * distArr[k] / MASS);
-                            gpuAtom[atomj].accelerations[k] -= (forceOverR * distArr[k] / MASS);
+                            gpuAtom[i].accelerations[k] += (forceOverR * distArr[k] / MASS);
+                            gpuAtom[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
                         }
                     }
                 }
@@ -319,6 +318,8 @@ double calcForces(thrust::host_vector<Atom> &atomList, int (&cellInteractionInde
     thrust::device_vector<int> atomsInCells;
     atomsInCells.reserve(numCellsXYZ);
     thrust::device_vector<Atom> gpuAtoms = atomList;
+    thrust::device_vector<int> header(numCellsXYZ);
+    thrust::device_vector<int> pointerArr(N);
 
     for (int j = 0; j < N; j++) { // Set all accelerations equal to zero
         for (int i = 0; i < 3; ++i) {
@@ -326,17 +327,24 @@ double calcForces(thrust::host_vector<Atom> &atomList, int (&cellInteractionInde
         }
     }
 
+    for (c = 0; c < numCellsXYZ; c++) {
+        header.push_back(-1);
+    }
+
+    
+
     for (int i = 0; i < N; i++) { // Place atoms in cells
         for (int j = 0; j < 3; j++) {
             cell[j] = atomList[i].positions[j] / cellLength; // Find the coordinates of a cell an atom belongs to
         }
         // Turn coordinates of cell into a cell index for the header array
         c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
-        atomsInCells[c].push_back(i);
+        pointerArr[i] = header[c];
+        header[c] = i;
     }
 
     for (int c = 0; c < numCellsXYZ; c++) {
-         calcForcesOnCell<<<1, 1>>>(c, gpuAtoms, cellInteractionIndexes, atomsInCells);
+         calcForcesOnCell<<<1, 1>>>(c, gpuAtoms, cellInteractionIndexes, header, pointerArr);
     }
     cudaDeviceSynchronize();
     atomList = gpuAtoms;
