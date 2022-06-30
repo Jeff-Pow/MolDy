@@ -1,34 +1,39 @@
-//
-// Created by Jeff Powell on 5/18/2022.
-//
+/*
+Host: CPU
+Device: GPU
+    __global__ - Runs on the GPU, called from the CPU or the GPU*. Executed with <<<dim3>>> arguments.
+    __device__ - Runs on the GPU, called from the GPU. Can be used with variabiles too.
+    __host__ - Runs on the CPU, called from the CPU.
+     __global__ functions can be called from other __global__ functions starting compute capability 3.5.
+*/
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
 
-#include <cstdio>
+#include "cuPrintf.cu"
+#include "cuPrintf.cuh"
+#include <cuda.h>
+
 #include <iostream>
 #include <sstream>
 #include <cmath>
-#include <ctime>
 #include <random>
 #include <fstream>
-#include <string>
 #include <array>
-#include <thread>
-#include <mutex>
-#include "BS_thread_pool.hpp"
-
+#include <string>
 
 struct Atom {
-public:
-    std::array<double, 3> positions;
-    std::array<double, 3> velocities;
-    std::array<double, 3> accelerations;
-    std::array<double, 3> oldAccelerations;
+    double positions[3];
+    double velocities[3];
+    double accelerations[3];
+    double oldAccelerations[3];
 
     Atom(double x, double y, double z) {
         positions[0] = x;
         positions[1] = y;
         positions[2] = z;
-        accelerations = {0, 0, 0};
-        oldAccelerations = {0, 0, 0};
+    }
+    Atom() {
+
     }
 };
 
@@ -54,48 +59,36 @@ const double TARGET_TEMP = tStar * EPS_STAR;
 const double MASS = 39.9 * 10 / Na / Kb; // Kelvin * ps^2 / A^2
 const double timeStep = dt_star * std::sqrt(MASS * SIGMA * SIGMA / EPS_STAR); // Convert time step to picoseconds
 
-double dot(double x, double y, double z);
-void thermostat(std::vector<Atom> &atomList);
-double calcForces(std::vector<Atom> &atomList, std::ofstream &debug);
-std::vector<Atom> faceCenteredCell();
-std::vector<Atom> simpleCubicCell();
-void radialDistribution();
-
-BS::thread_pool pool(std::thread::hardware_concurrency() - 1);
-//BS::thread_pool pool(1);
-std::array<std::mutex, N> mutexes;
-
 const double targetCellLength = rCutoff;
 const int numCellsPerDirection = std::floor(L / targetCellLength);
 const double cellLength = L / numCellsPerDirection; // Side length of each cell
-const int numCellsYZ = numCellsPerDirection * numCellsPerDirection; // Number of cells in one plane
-const int numCellsXYZ = numCellsYZ * numCellsPerDirection; // Number of cells in the simulation
-std::array<int, N> pointerArr; // Array pointing to the next lowest atom in the cell
-std::vector<int> header(numCellsXYZ, -1); // Array pointing at the highest numbered atom in each cell
+
+// Declarations
+double dot(double x, double y, double z);
+void thermostat(Atom (&atomList)[N]);
+double calcForces(Atom (&atomList)[N]);
+thrust::host_vector<Atom> faceCenteredCell();
+std::vector<Atom> simpleCubicCell();
+void radialDistribution();
 
 
-void writePositions(std::vector<Atom> &atomList, std::ofstream &positionFile, int i, std::ofstream &debug) {
+
+__host__
+void writePositions(thrust::host_vector<Atom> &atomList, std::ofstream &positionFile, int i) {
     positionFile << N << "\nTime: " << i << "\n";
-    //debug << "Time: " << i << "\n";
     for (int j = 0; j < N; ++j) { // Write positions to xyz file
         positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-        //debug << "Atom number: " << j << "\n";
-        //debug << "Positions: " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
-        //debug << "Velocities: " << atomList[j].velocities[0] << " " << atomList[j].velocities[1]  << " " << atomList[j].velocities[2] << "\n";
-        //debug << "Accelerations: " << atomList[j].accelerations[0] << " " << atomList[j].accelerations[1]  << " " << atomList[j].accelerations[2] << "\n";
-        //debug << "- \n";
     }
-    //debug << "------------------------------------------------- \n";
 }
 
 int main() {
     std::cout << "Cells per direction: " << numCellsPerDirection << std::endl;
     std::cout << "Simulation length: " << L << std::endl;
     std::cout << "Cell length: " << cellLength << std::endl;
+
     std::ofstream positionFile("out.xyz");
-    std::ofstream debug("md.dat");
-    debug << "I \t J \t C \t C1 \t R2 \t forceOverR \n";
-    std::ofstream energyFile("Energy.dat");
+    //std::ofstream debug("debug.dat");
+    //debug << "I \t J \t C \t C1 \t R2 \t forceOverR \n";
 
     // Arrays to hold energy values at each step of the process
     std::vector<double> KE;
@@ -106,7 +99,14 @@ int main() {
     std::default_random_engine generator(3); // (rd())
     std::uniform_real_distribution<double> distribution(-1.0, 1.0);
 
-    std::vector<Atom> atomList = faceCenteredCell();
+    thrust::host_vector<Atom> atomList = faceCenteredCell();
+    Atom atoms[N];
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < 3; j++) {
+            atoms[i].positions[j] = atomList[i].positions[j];
+            atoms[i].velocities[j] = atomList[j].velocities[j];
+        }
+    }
 
     for (int i = 0; i < N; ++i) { // Randomize velocities
          for (int j = 0; j < 3; ++j) {
@@ -114,7 +114,7 @@ int main() {
          }
     }
    
-    thermostat(atomList); // Make velocities more accurate
+    thermostat(atoms); // Make velocities more accurate
 
     double totalVelSquared;
     double netPotential;
@@ -127,7 +127,7 @@ int main() {
             count += .01;
         }
 
-        writePositions(atomList, positionFile, i, debug);
+        writePositions(atomList, positionFile, i);
 
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
@@ -138,7 +138,7 @@ int main() {
             }
         }
 
-        netPotential = calcForces(atomList, debug); // Update accelerations and return potential of system
+        netPotential = calcForces(atoms); // Update accelerations and return potential of system
 
         totalVelSquared = 0;
         for (int k = 0; k < N; ++k) { // Update velocities
@@ -149,19 +149,14 @@ int main() {
         }
 
         if (i < numTimeSteps / 2 && i % 5 == 0) { // Apply velocity modifications for first half of sample
-            thermostat(atomList);
+            thermostat(atoms);
         }
 
-        if (i > numTimeSteps / 2) { // Record energies to arrays and file after half of time has passed
+        if (i > numTimeSteps / 2) { // Record energies after half of time has passed
             double netKE = .5 * MASS * totalVelSquared;
             KE.push_back(netKE);
             PE.push_back(netPotential);
             netE.push_back(netPotential + netKE);
-            //energyFile << "Time: " << i << "\n";
-            //energyFile << "KE: " << netKE << "\n";
-            //energyFile << "PE: " << netPotential << "\n";
-            //energyFile << "Total energy: " << netPotential + netKE << "\n";
-            //energyFile << "------------------------------------------ \n";
         }
     }
 
@@ -170,7 +165,7 @@ int main() {
         avgPE += i;
     }
     avgPE /= PE.size();
-    std::cout << "AVG PE: " << avgPE << std::endl;
+    std::cout << "Avg PE: " << avgPE << std::endl;
 
     double SoLo2 = SIGMA / (L / 2); // Sigma over L over 2
     double Ulrc = (8.0 / 3.0) * M_PI * N * rhostar * EPS_STAR; // Potential sub lrc (long range corrections)
@@ -182,8 +177,7 @@ int main() {
     std::cout << "Reduced potential with long range correction: " << PEstar << std::endl;
 
     positionFile.close();
-    debug.close();
-    energyFile.close();
+    //debug.close();
 
     // std::cout << "Finding radial distribution \n";
     // radialDistribution(); // Comment out function to reduce runtime
@@ -191,14 +185,21 @@ int main() {
     return 0;
 }
 
-double dot (double x, double y, double z) { // Returns dot product of a vector
+__device__
+void dotForGPU(double x, double y, double z, double &r2) { // Returns dot product of a vector
+    r2 = x * x + y * y + z * z;
+}
+
+__host__
+double dotForCPU(double x, double y, double z) {
     return x * x + y * y + z * z;
 }
 
-void thermostat(std::vector<Atom> &atomList) {
+__host__
+void thermostat(Atom (&atomList)[N]) {
     double instantTemp = 0;
     for (int i = 0; i < N; i++) { // Add kinetic energy of each molecule to the temperature
-        instantTemp += MASS * dot(atomList[i].velocities[0], atomList[i].velocities[1], atomList[i].velocities[2]);
+        instantTemp += MASS * dotForCPU(atomList[i].velocities[0], atomList[i].velocities[1], atomList[i].velocities[2]);
     }
     instantTemp /= (3 * N - 3);
     double tempScalar = std::sqrt(TARGET_TEMP / instantTemp);
@@ -209,108 +210,54 @@ void thermostat(std::vector<Atom> &atomList) {
     }
 }
 
-double calcForcesOnCell(std::array<int, 3> cell, std::vector<Atom> &atomList, std::ofstream &debug) {
-    std::array<int, 3> mc1; // Array to keep track of neighboring cells
-    std::array<double, 3> distArr; //
-    std::array<int, 3> shiftedNeighbor; // Boundary conditions
-    double netPotential = 0;
-    int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
+__global__
+void calcForcesPerAtom(Atom (&atomList)[N], int atomidx, double L, double EPS_STAR, double MASS, double &netPotential) {
+    double distArr[3]; // Record distance between atoms
+    double localPotential = 0;
+    double r2;
 
-    // Scan neighbor cells including the one currently active
-    for (mc1[0] = cell[0] - 1; mc1[0] < cell[0] + 2; mc1[0]++) {
-        for (mc1[1] = cell[1] - 1; mc1[1] < cell[1] + 2; mc1[1]++) {
-            for (mc1[2] = cell[2] - 1; mc1[2] < cell[2] + 2; mc1[2]++) {
+    for(int j = 0; j < N; j++) {
+        for (int k = 0; k < 3; k++) {
+            // Apply boundary conditions
+            distArr[k] = atomList[atomidx].positions[k] - atomList[j].positions[k];
+            distArr[k] -= L * std::round(distArr[k] / L);
+        }
+        //dotForGPU(distArr[0], distArr[1], distArr[2], r2); // Dot of distance vector between the two atoms
+        r2 = distArr[0] * distArr[0] + distArr[1] * distArr[1] + distArr[2] * distArr[2];
+        if (r2 < rCutoffSquared) {
+            double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
+            double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
+            double sor12 = sor6 * sor6; // Sigma over r to the twelfth
 
-                for (int k = 0; k < 3; k++) { // Boundary conditions
-                    shiftedNeighbor[k] = (mc1[k] + numCellsPerDirection) % numCellsPerDirection;
-                }
-                // Scalar index of neighboring cell
-                int c1 = shiftedNeighbor[0] * numCellsYZ + shiftedNeighbor[1] * numCellsPerDirection + shiftedNeighbor[2];
-
-                int i = header[c]; // Find the highest numbered atom in each cell
-                while (i > -1) { 
-                    int j = header[c1]; // Scan atom with the largest index in neighboring cell c1
-                    while (j > -1) {
-                        if (i < j) { // Don't double count atoms (if i > j its already been counted)
-                            for (int k = 0; k < 3; k++) {
-                                // Apply boundary conditions
-                                distArr[k] = atomList[i].positions[k] - atomList[j].positions[k];
-                                distArr[k] -= L * std::round(distArr[k] / L);
-                            }
-                            double r2 = dot(distArr[0], distArr[1], distArr[2]); // Dot of distance vector between the two atoms
-                            if (r2 < rCutoffSquared) {
-                                double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
-                                double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
-                                double sor12 = sor6 * sor6; // Sigma over r to the twelfth
-
-                                double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
-                                netPotential += 4 * EPS_STAR * (sor12 - sor6);
-
-                                mutexes[i].lock();
-                                mutexes[j].lock();
-                                for (int k = 0; k < 3; k++) {
-                                    atomList[i].accelerations[k] += (forceOverR * distArr[k] / MASS);
-                                    atomList[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
-                                }
-                                mutexes[i].unlock();
-                                mutexes[j].unlock();
-                            }
-                        }
-                        j = pointerArr[j];
-                    }
-                    i = pointerArr[i];
-                }
+            double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
+            localPotential += 4 * EPS_STAR * (sor12 - sor6);
+            for (int k = 0; k < 3; k++) {
+                atomList[atomidx].accelerations[k] += (forceOverR * distArr[k] / MASS);
+                atomList[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
             }
         }
     }
-    return netPotential;
+    netPotential += localPotential;
 }
 
-double calcForces(std::vector<Atom> &atomList, std::ofstream &debug) { // Cell pairs method to calculate forces
-
+__host__
+double calcForces(Atom (&atomList)[N]) { // Cell pairs method to calculate forces
     double netPotential = 0;
-    int c; // Indexes of cell coordinates
-    std::array<int, 3> cell; // Array to keep track of coordinates of a cell
-    // std::array<int, 3> mc1; // Array to keep track of the coordinates of a neighboring cell
 
-    for (int j = 0; j < N; j++) { // Set all accelerations in every atom equal to zero
+    for (int j = 0; j < N; j++) { // Set all accelerations equal to zero
         for (int i = 0; i < 3; ++i) {
             atomList[j].accelerations[i] = 0;
         }
     }
 
-    for (c = 0; c < numCellsXYZ; c++) { // Initialize all cells in header array to empty
-        header[c] = -1;
+    for (int c = 0; c < N; c++) {
+         calcForcesPerAtom<<<1, 1>>>(atomList, c, L, EPS_STAR, MASS, netPotential);
     }
-
-    for (int i = 0; i < N; i++) {
-        for (int j = 0; j < 3; j++) { 
-            cell[j] = atomList[i].positions[j] / cellLength; // Find the coordinates of a cell an atom belongs to
-        }
-        // Turn coordinates of cell into a cell index for the header array
-        c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
-        // Link current atom to previous occupant
-        pointerArr[i] = header[c];
-        // Current atom is the highest in its cell, so it goes in the header
-        header[c] = i;
-    }
-
-    std::future<double> potentialArr[numCellsXYZ];
-    for  (cell[0] = 0; cell[0] < numCellsPerDirection; cell[0]++) { // Calculate coordinates of a cell to work in
-        for  (cell[1] = 0; cell[1] <  numCellsPerDirection; cell[1]++) {
-            for  (cell[2] = 0; cell[2] < numCellsPerDirection; cell[2]++) {
-                // Calculate index of the current cell we're working in
-                int c = cell[0] * numCellsYZ + cell[1] * numCellsPerDirection + cell[2];
-                potentialArr[c] = pool.submit(calcForcesOnCell, cell, std::ref(atomList), std::ref(debug));
-            }
-        }
-    }
-    for (int c = 0; c < numCellsXYZ; c++) {
-        netPotential += potentialArr[c].get();
-    }
+    cudaDeviceSynchronize();
     return netPotential;
 }
 
+__host__
 std::vector<Atom> simpleCubicCell() {
     double n = std::cbrt(N); // Number of atoms in each dimension
 
@@ -325,7 +272,8 @@ std::vector<Atom> simpleCubicCell() {
     return atomList;
 }
 
-std::vector<Atom> faceCenteredCell() {
+__host__
+thrust::host_vector<Atom> faceCenteredCell() {
     // Each face centered unit cell has four atoms
     // Method creates a cubic arrangement of face centered unit cells
 
@@ -333,7 +281,7 @@ std::vector<Atom> faceCenteredCell() {
     double dr = L / n; // Distance between two corners in a unit cell
     double dro2 = dr / 2.0; // dr over 2
 
-    std::vector<Atom> atomList;
+    thrust::host_vector<Atom> atomList;
 
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
@@ -349,6 +297,7 @@ std::vector<Atom> faceCenteredCell() {
 }
 
 
+__host__
 void radialDistribution() {
     
     std::string line;
@@ -387,7 +336,7 @@ void radialDistribution() {
                     double zDif = z[j] - z[k];
                     zDif = zDif - L * std::round(zDif / L);
                     
-                    double r = std::sqrt(dot(xDif, yDif, zDif));
+                    double r = std::sqrt(dotForCPU(xDif, yDif, zDif));
 
                     if (r < L/2.0) {
                         data[(int)(r / dr)] += 2.0;
