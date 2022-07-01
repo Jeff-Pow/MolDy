@@ -67,6 +67,7 @@ const double cellLength = L / numCellsPerDirection; // Side length of each cell
 const int numCellsYZ = numCellsPerDirection * numCellsPerDirection; // Number of cells in one plane
 const int numCellsXYZ = numCellsYZ * numCellsPerDirection; // Number of cells in the simulation
 BS::thread_pool pool(std::thread::hardware_concurrency() - 1);
+//BS::thread_pool pool(1);
 std::array<std::mutex, N> mutexes;
 std::array<std::vector<int>, numCellsXYZ> linkedList;
 std::array<std::vector<int>, numCellsXYZ> cellInteractionIndexes;
@@ -277,6 +278,7 @@ double calcForcesOnCell(int c, std::vector<Atom>& atomList, std::ofstream& debug
         auto neighborCellArr = linkedList[c1];
 
         for (int i : cellArr) {
+	    bool anyChanges = false;
             iUpdate.fill(0);
             for (int j : neighborCellArr) {
                 if (i < j || c != c1) { // Don't double count atoms (if i > j its already been counted)
@@ -293,6 +295,7 @@ double calcForcesOnCell(int c, std::vector<Atom>& atomList, std::ofstream& debug
 
                         double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
                         netPotential += 4 * EPS_STAR * (sor12 - sor6);
+			anyChanges = true;
                         mutexes[j].lock();
                         for (int k = 0; k < 3; k++) {
                             iUpdate[k] += (forceOverR * distArr[k] / MASS);
@@ -302,11 +305,13 @@ double calcForcesOnCell(int c, std::vector<Atom>& atomList, std::ofstream& debug
                     }
                 }
             }
-            mutexes[i].lock();
-            for (int k = 0; k < 3; k++) {
-                atomList[i].accelerations[k] += iUpdate[k];
-            }
-            mutexes[i].unlock();
+	    if (anyChanges) {
+		    mutexes[i].lock();
+		    for (int k = 0; k < 3; k++) {
+			atomList[i].accelerations[k] += iUpdate[k];
+		    }
+		    mutexes[i].unlock();
+	    }
         }
     }
     return netPotential;
