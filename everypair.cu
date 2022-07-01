@@ -59,14 +59,6 @@ const double TARGET_TEMP = tStar * EPS_STAR;
 const double MASS = 39.9 * 10 / Na / Kb; // Kelvin * ps^2 / A^2
 const double timeStep = dt_star * std::sqrt(MASS * SIGMA * SIGMA / EPS_STAR); // Convert time step to picoseconds
 
-// Declarations
-void thermostat(Atom *atomList);
-double calcForces(Atom *atomList);
-thrust::host_vector<Atom> faceCenteredCell();
-std::vector<Atom> simpleCubicCell();
-void radialDistribution();
-
-
 
 __host__
 void writePositions(Atom *atomList, std::ofstream &positionFile, int i) {
@@ -74,106 +66,6 @@ void writePositions(Atom *atomList, std::ofstream &positionFile, int i) {
     for (int j = 0; j < N; ++j) { // Write positions to xyz file
         positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
     }
-}
-
-int main() {
-
-    std::ofstream positionFile("out.xyz");
-    //std::ofstream debug("debug.dat");
-
-    // Arrays to hold energy values at each step of the process
-    std::vector<double> KE;
-    std::vector<double> PE;
-    std::vector<double> netE;
-
-    std::random_device rd;
-    std::default_random_engine generator(3); // (rd())
-    std::uniform_real_distribution<double> distribution(-1.0, 1.0);
-
-    thrust::host_vector<Atom> atomList = faceCenteredCell();
-    Atom atoms[N];
-    for (int i = 0; i < N; i++) {
-        for (int j = 0; j < 3; j++) {
-            atoms[i].positions[j] = atomList[i].positions[j];
-            atoms[i].velocities[j] = atomList[j].velocities[j];
-        }
-    }
-
-    for (int i = 0; i < N; ++i) { // Randomize velocities
-         for (int j = 0; j < 3; ++j) {
-             atoms[i].velocities[j] = distribution(generator);
-         }
-    }
-   
-    thermostat(atoms); // Make velocities more accurate
-
-    double totalVelSquared;
-    double netPotential;
-
-    double count = .01;
-    for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
-
-        if (i > count * numTimeSteps) { // Percent progress
-            std::cout << count * 100 << "% \n";
-            count += .01;
-        }
-
-        writePositions(atoms, positionFile, i);
-
-        for (int k = 0; k < N; ++k) { // Update positions
-            for (int j = 0; j < 3; ++j) {
-                atoms[k].positions[j] += atoms[k].velocities[j] * timeStep 
-                    + .5 * atoms[k].accelerations[j] * timeStep * timeStep;
-                atoms[k].positions[j] += -L * std::floor(atoms[k].positions[j] / L); // Keep atom inside box
-                atoms[k].oldAccelerations[j] = atomList[k].accelerations[j];
-            }
-        }
-
-        netPotential = calcForces(atoms); // Update accelerations and return potential of system
-
-        totalVelSquared = 0;
-        for (int k = 0; k < N; ++k) { // Update velocities
-            for (int j = 0; j < 3; ++j) {
-                atoms[k].velocities[j] += .5 * (atoms[k].accelerations[j] + atoms[k].oldAccelerations[j]) * timeStep;
-                totalVelSquared += atoms[k].velocities[j] * atoms[k].velocities[j];
-            }
-        }
-
-        if (i < numTimeSteps / 2 && i % 5 == 0) { // Apply velocity modifications for first half of sample
-            thermostat(atoms);
-        }
-
-        if (i > numTimeSteps / 2) { // Record energies after half of time has passed
-            double netKE = .5 * MASS * totalVelSquared;
-            KE.push_back(netKE);
-            PE.push_back(netPotential);
-            netE.push_back(netPotential + netKE);
-        }
-    }
-
-    double avgPE = 0; // Average PE array
-    for (double i : PE) {
-        avgPE += i;
-    }
-    avgPE /= PE.size();
-    std::cout << "Avg PE: " << avgPE << std::endl;
-
-    double SoLo2 = SIGMA / (L / 2); // Sigma over L over 2
-    double Ulrc = (8.0 / 3.0) * M_PI * N * rhostar * EPS_STAR; // Potential sub lrc (long range corrections)
-    double temp = 1.0 / 3.0 * std::pow(SoLo2, 9.0);
-    double temp1 = std::pow(SoLo2, 3.0);
-    Ulrc *= (temp - temp1);
-    double PEstar = ((avgPE + Ulrc) / N) / EPS_STAR; // Reduced potential energy
-
-    std::cout << "Reduced potential with long range correction: " << PEstar << std::endl;
-
-    positionFile.close();
-    //debug.close();
-
-    // std::cout << "Finding radial distribution \n";
-    // radialDistribution(); // Comment out function to reduce runtime
-
-    return 0;
 }
 
 __device__
@@ -202,28 +94,28 @@ void thermostat(Atom *atomList) {
 }
 
 __global__
-void calcForcesPerAtom(Atom *devAtoms, int atomidx, double L, double EPS_STAR, double MASS, double *netPotential) {
+void calcForcesPerAtom(Atom *devAtoms, int atomidx, double *netPotential) {
     double distArr[3]; // Record distance between atoms
     double localPotential = 0;
     double r2;
 
-    for(int j = 0; j < N; j++) {
+    for (int j = 0; j < 32; j++) {
         for (int k = 0; k < 3; k++) {
             // Apply boundary conditions
             distArr[k] = devAtoms[atomidx].positions[k] - devAtoms[j].positions[k];
-            distArr[k] -= L * std::round(distArr[k] / L);
+            distArr[k] -= 14.10683 * std::round(distArr[k] / 14.10683);
         }
         r2 = distArr[0] * distArr[0] + distArr[1] * distArr[1] + distArr[2] * distArr[2]; // Dot product b/t atoms
-        if (r2 < rCutoffSquared) {
-            double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
+        if (r2 < 72.46) {
+            double s2or2 = 3.405 * 3.405 / r2; // Sigma squared over r squared
             double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
             double sor12 = sor6 * sor6; // Sigma over r to the twelfth
 
-            double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
-            localPotential += 4 * EPS_STAR * (sor12 - sor6);
+            double forceOverR = 24 * 119.8 / r2 * (2 * sor12 - sor6);
+            localPotential += 4 * 119.8 * (sor12 - sor6);
             for (int k = 0; k < 3; k++) {
-                devAtoms[atomidx].accelerations[k] += (forceOverR * distArr[k] / MASS);
-                devAtoms[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
+                devAtoms[atomidx].accelerations[k] += (forceOverR * distArr[k] / 47.9899);
+                devAtoms[j].accelerations[k] -= (forceOverR * distArr[k] / 47.9899);
             }
         }
     }
@@ -241,12 +133,12 @@ double calcForces(Atom *atomList) { // Cell pairs method to calculate forces
             atomList[j].accelerations[i] = 0;
         }
     }
-    Atom *devAtoms;
+    Atom *devAtoms = atomList;
     cudaMallocManaged(&devAtoms, N * sizeof(Atom));
     cudaMemcpy(devAtoms, atomList, N * sizeof(Atom), cudaMemcpyHostToDevice);
 
     for (int c = 0; c < N; c++) {
-         calcForcesPerAtom<<<1, 1>>>(devAtoms, c, L, EPS_STAR, MASS, netPotential);
+         calcForcesPerAtom<<<1, 1>>>(devAtoms, c, netPotential);
     }
     cudaDeviceSynchronize();
     cudaMemcpy(atomList, devAtoms, N * sizeof(Atom), cudaMemcpyDeviceToHost);
@@ -355,4 +247,104 @@ void radialDistribution() {
         radialData << r << " , " << data[i] / N << "\n";
     }
     radialData.close();
+}
+
+int main() {
+
+    std::ofstream positionFile("out.xyz");
+    //std::ofstream debug("debug.dat");
+
+    // Arrays to hold energy values at each step of the process
+    std::vector<double> KE;
+    std::vector<double> PE;
+    std::vector<double> netE;
+
+    std::random_device rd;
+    std::default_random_engine generator(3); // (rd())
+    std::uniform_real_distribution<double> distribution(-1.0, 1.0);
+
+    thrust::host_vector<Atom> atomList = faceCenteredCell();
+    Atom atoms[N];
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < 3; j++) {
+            atoms[i].positions[j] = atomList[i].positions[j];
+            atoms[i].velocities[j] = atomList[j].velocities[j];
+        }
+    }
+
+    for (int i = 0; i < N; ++i) { // Randomize velocities
+         for (int j = 0; j < 3; ++j) {
+             atoms[i].velocities[j] = distribution(generator);
+         }
+    }
+   
+    thermostat(atoms); // Make velocities more accurate
+
+    double totalVelSquared;
+    double netPotential;
+
+    double count = .01;
+    for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
+
+        if (i > count * numTimeSteps) { // Percent progress
+            std::cout << count * 100 << "% \n";
+            count += .01;
+        }
+
+        writePositions(atoms, positionFile, i);
+
+        for (int k = 0; k < N; ++k) { // Update positions
+            for (int j = 0; j < 3; ++j) {
+                atoms[k].positions[j] += atoms[k].velocities[j] * timeStep 
+                    + .5 * atoms[k].accelerations[j] * timeStep * timeStep;
+                atoms[k].positions[j] += -L * std::floor(atoms[k].positions[j] / L); // Keep atom inside box
+                atoms[k].oldAccelerations[j] = atomList[k].accelerations[j];
+            }
+        }
+
+        netPotential = calcForces(atoms); // Update accelerations and return potential of system
+
+        totalVelSquared = 0;
+        for (int k = 0; k < N; ++k) { // Update velocities
+            for (int j = 0; j < 3; ++j) {
+                atoms[k].velocities[j] += .5 * (atoms[k].accelerations[j] + atoms[k].oldAccelerations[j]) * timeStep;
+                totalVelSquared += atoms[k].velocities[j] * atoms[k].velocities[j];
+            }
+        }
+
+        if (i < numTimeSteps / 2 && i % 5 == 0) { // Apply velocity modifications for first half of sample
+            thermostat(atoms);
+        }
+
+        if (i > numTimeSteps / 2) { // Record energies after half of time has passed
+            double netKE = .5 * MASS * totalVelSquared;
+            KE.push_back(netKE);
+            PE.push_back(netPotential);
+            netE.push_back(netPotential + netKE);
+        }
+    }
+
+    double avgPE = 0; // Average PE array
+    for (double i : PE) {
+        avgPE += i;
+    }
+    avgPE /= PE.size();
+    std::cout << "Avg PE: " << avgPE << std::endl;
+
+    double SoLo2 = SIGMA / (L / 2); // Sigma over L over 2
+    double Ulrc = (8.0 / 3.0) * M_PI * N * rhostar * EPS_STAR; // Potential sub lrc (long range corrections)
+    double temp = 1.0 / 3.0 * std::pow(SoLo2, 9.0);
+    double temp1 = std::pow(SoLo2, 3.0);
+    Ulrc *= (temp - temp1);
+    double PEstar = ((avgPE + Ulrc) / N) / EPS_STAR; // Reduced potential energy
+
+    std::cout << "Reduced potential with long range correction: " << PEstar << std::endl;
+
+    positionFile.close();
+    //debug.close();
+
+    // std::cout << "Finding radial distribution \n";
+    // radialDistribution(); // Comment out function to reduce runtime
+
+    return 0;
 }
