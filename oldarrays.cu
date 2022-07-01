@@ -8,6 +8,7 @@ Device: GPU
 */
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
+#include <thrust/gather.h>
 
 #include <iostream>
 #include <sstream>
@@ -18,17 +19,15 @@ Device: GPU
 #include <string>
 
 struct Atom {
-    std::array<double, 3> positions;
-    std::array<double, 3> velocities;
-    std::array<double, 3> accelerations;
-    std::array<double, 3> oldAccelerations;
+    double positions[3];
+    double velocities[3];
+    double accelerations[3] = {0,0,0};
+    double oldAccelerations[3] = {0,0,0};
 
     Atom(double x, double y, double z) {
         positions[0] = x;
         positions[1] = y;
         positions[2] = z;
-        accelerations = {0, 0, 0};
-        oldAccelerations = {0, 0, 0};
     }
 };
 

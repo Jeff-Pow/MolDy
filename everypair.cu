@@ -23,9 +23,9 @@ Device: GPU
 
 struct Atom {
     double positions[3];
-    double velocities[3];
-    double accelerations[3];
-    double oldAccelerations[3];
+    double velocities[3] = {0,0,0};
+    double accelerations[3] = {0,0,0};
+    double oldAccelerations[3] = {0,0,0};
 
     Atom(double x, double y, double z) {
         positions[0] = x;
@@ -43,7 +43,7 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 5000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 4000; // Number of atoms in simulation
+const int N = 32; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -59,14 +59,9 @@ const double TARGET_TEMP = tStar * EPS_STAR;
 const double MASS = 39.9 * 10 / Na / Kb; // Kelvin * ps^2 / A^2
 const double timeStep = dt_star * std::sqrt(MASS * SIGMA * SIGMA / EPS_STAR); // Convert time step to picoseconds
 
-const double targetCellLength = rCutoff;
-const int numCellsPerDirection = std::floor(L / targetCellLength);
-const double cellLength = L / numCellsPerDirection; // Side length of each cell
-
 // Declarations
-double dot(double x, double y, double z);
-void thermostat(Atom (&atomList)[N]);
-double calcForces(Atom (&atomList)[N]);
+void thermostat(Atom *atomList);
+double calcForces(Atom *atomList);
 thrust::host_vector<Atom> faceCenteredCell();
 std::vector<Atom> simpleCubicCell();
 void radialDistribution();
@@ -74,7 +69,7 @@ void radialDistribution();
 
 
 __host__
-void writePositions(thrust::host_vector<Atom> &atomList, std::ofstream &positionFile, int i) {
+void writePositions(Atom *atomList, std::ofstream &positionFile, int i) {
     positionFile << N << "\nTime: " << i << "\n";
     for (int j = 0; j < N; ++j) { // Write positions to xyz file
         positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
@@ -82,13 +77,9 @@ void writePositions(thrust::host_vector<Atom> &atomList, std::ofstream &position
 }
 
 int main() {
-    std::cout << "Cells per direction: " << numCellsPerDirection << std::endl;
-    std::cout << "Simulation length: " << L << std::endl;
-    std::cout << "Cell length: " << cellLength << std::endl;
 
     std::ofstream positionFile("out.xyz");
     //std::ofstream debug("debug.dat");
-    //debug << "I \t J \t C \t C1 \t R2 \t forceOverR \n";
 
     // Arrays to hold energy values at each step of the process
     std::vector<double> KE;
@@ -110,7 +101,7 @@ int main() {
 
     for (int i = 0; i < N; ++i) { // Randomize velocities
          for (int j = 0; j < 3; ++j) {
-             atomList[i].velocities[j] = distribution(generator);
+             atoms[i].velocities[j] = distribution(generator);
          }
     }
    
@@ -127,14 +118,14 @@ int main() {
             count += .01;
         }
 
-        writePositions(atomList, positionFile, i);
+        writePositions(atoms, positionFile, i);
 
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
-                atomList[k].positions[j] += atomList[k].velocities[j] * timeStep 
-                    + .5 * atomList[k].accelerations[j] * timeStep * timeStep;
-                atomList[k].positions[j] += -L * std::floor(atomList[k].positions[j] / L); // Keep atom inside box
-                atomList[k].oldAccelerations[j] = atomList[k].accelerations[j];
+                atoms[k].positions[j] += atoms[k].velocities[j] * timeStep 
+                    + .5 * atoms[k].accelerations[j] * timeStep * timeStep;
+                atoms[k].positions[j] += -L * std::floor(atoms[k].positions[j] / L); // Keep atom inside box
+                atoms[k].oldAccelerations[j] = atomList[k].accelerations[j];
             }
         }
 
@@ -143,8 +134,8 @@ int main() {
         totalVelSquared = 0;
         for (int k = 0; k < N; ++k) { // Update velocities
             for (int j = 0; j < 3; ++j) {
-                atomList[k].velocities[j] += .5 * (atomList[k].accelerations[j] + atomList[k].oldAccelerations[j]) * timeStep;
-                totalVelSquared += atomList[k].velocities[j] * atomList[k].velocities[j];
+                atoms[k].velocities[j] += .5 * (atoms[k].accelerations[j] + atoms[k].oldAccelerations[j]) * timeStep;
+                totalVelSquared += atoms[k].velocities[j] * atoms[k].velocities[j];
             }
         }
 
@@ -196,7 +187,7 @@ double dotForCPU(double x, double y, double z) {
 }
 
 __host__
-void thermostat(Atom (&atomList)[N]) {
+void thermostat(Atom *atomList) {
     double instantTemp = 0;
     for (int i = 0; i < N; i++) { // Add kinetic energy of each molecule to the temperature
         instantTemp += MASS * dotForCPU(atomList[i].velocities[0], atomList[i].velocities[1], atomList[i].velocities[2]);
@@ -211,7 +202,7 @@ void thermostat(Atom (&atomList)[N]) {
 }
 
 __global__
-void calcForcesPerAtom(Atom (&atomList)[N], int atomidx, double L, double EPS_STAR, double MASS, double &netPotential) {
+void calcForcesPerAtom(Atom *devAtoms, int atomidx, double L, double EPS_STAR, double MASS, double *netPotential) {
     double distArr[3]; // Record distance between atoms
     double localPotential = 0;
     double r2;
@@ -219,11 +210,10 @@ void calcForcesPerAtom(Atom (&atomList)[N], int atomidx, double L, double EPS_ST
     for(int j = 0; j < N; j++) {
         for (int k = 0; k < 3; k++) {
             // Apply boundary conditions
-            distArr[k] = atomList[atomidx].positions[k] - atomList[j].positions[k];
+            distArr[k] = devAtoms[atomidx].positions[k] - devAtoms[j].positions[k];
             distArr[k] -= L * std::round(distArr[k] / L);
         }
-        //dotForGPU(distArr[0], distArr[1], distArr[2], r2); // Dot of distance vector between the two atoms
-        r2 = distArr[0] * distArr[0] + distArr[1] * distArr[1] + distArr[2] * distArr[2];
+        r2 = distArr[0] * distArr[0] + distArr[1] * distArr[1] + distArr[2] * distArr[2]; // Dot product b/t atoms
         if (r2 < rCutoffSquared) {
             double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
             double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
@@ -232,29 +222,38 @@ void calcForcesPerAtom(Atom (&atomList)[N], int atomidx, double L, double EPS_ST
             double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
             localPotential += 4 * EPS_STAR * (sor12 - sor6);
             for (int k = 0; k < 3; k++) {
-                atomList[atomidx].accelerations[k] += (forceOverR * distArr[k] / MASS);
-                atomList[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
+                devAtoms[atomidx].accelerations[k] += (forceOverR * distArr[k] / MASS);
+                devAtoms[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
             }
         }
     }
-    netPotential += localPotential;
+    *netPotential += localPotential;
 }
 
 __host__
-double calcForces(Atom (&atomList)[N]) { // Cell pairs method to calculate forces
-    double netPotential = 0;
+double calcForces(Atom *atomList) { // Cell pairs method to calculate forces
+    double *netPotential;
+    cudaMallocManaged(&netPotential, sizeof(double));
+    *netPotential = 0;
 
     for (int j = 0; j < N; j++) { // Set all accelerations equal to zero
         for (int i = 0; i < 3; ++i) {
             atomList[j].accelerations[i] = 0;
         }
     }
+    Atom *devAtoms;
+    cudaMallocManaged(&devAtoms, N * sizeof(Atom));
+    cudaMemcpy(devAtoms, atomList, N * sizeof(Atom), cudaMemcpyHostToDevice);
 
     for (int c = 0; c < N; c++) {
-         calcForcesPerAtom<<<1, 1>>>(atomList, c, L, EPS_STAR, MASS, netPotential);
+         calcForcesPerAtom<<<1, 1>>>(devAtoms, c, L, EPS_STAR, MASS, netPotential);
     }
     cudaDeviceSynchronize();
-    return netPotential;
+    cudaMemcpy(atomList, devAtoms, N * sizeof(Atom), cudaMemcpyDeviceToHost);
+    cudaFree(devAtoms);
+    double result = *netPotential;
+    cudaFree(netPotential);
+    return result;
 }
 
 __host__
