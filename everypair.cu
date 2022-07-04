@@ -9,8 +9,6 @@ Device: GPU
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 
-#include "cuPrintf.cu"
-#include "cuPrintf.cuh"
 #include <cuda.h>
 
 #include <iostream>
@@ -19,7 +17,6 @@ Device: GPU
 #include <random>
 #include <fstream>
 #include <array>
-#include <string>
 
 struct Atom {
     double positions[3];
@@ -40,7 +37,7 @@ struct Atom {
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 5000; // Parameters to change for simulation
+const int numTimeSteps = 500; // Parameters to change for simulation
 const double dt_star= .001;
 
 const int N = 32; // Number of atoms in simulation
@@ -61,10 +58,10 @@ const double timeStep = dt_star * std::sqrt(MASS * SIGMA * SIGMA / EPS_STAR); //
 
 
 __host__
-void writePositions(Atom *atomList, std::ofstream &positionFile, int i) {
+void writePositions(Atom *atoms, std::ofstream &positionFile, int i) {
     positionFile << N << "\nTime: " << i << "\n";
     for (int j = 0; j < N; ++j) { // Write positions to xyz file
-        positionFile << "A " << atomList[j].positions[0] << " " << atomList[j].positions[1] << " " << atomList[j].positions[2] << "\n";
+        positionFile << "A " << atoms[j].positions[0] << " " << atoms[j].positions[1] << " " << atoms[j].positions[2] << "\n";
     }
 }
 
@@ -94,73 +91,62 @@ void thermostat(Atom *atomList) {
 }
 
 __global__
-void calcForcesPerAtom(Atom *devAtoms, int atomidx, double *netPotential) {
+void calcForcesPerAtom(Atom *devAtoms, int atomidx, double *netPotential, double L, double EPS_STAR, double MASS, double rCutoffSquared) {
     double distArr[3]; // Record distance between atoms
     double localPotential = 0;
     double r2;
 
-    for (int j = 0; j < 32; j++) {
+    for (int j = atomidx + 1; j < N; j++) {
         for (int k = 0; k < 3; k++) {
             // Apply boundary conditions
             distArr[k] = devAtoms[atomidx].positions[k] - devAtoms[j].positions[k];
-            distArr[k] -= 14.10683 * std::round(distArr[k] / 14.10683);
+            distArr[k] -= L * std::round(distArr[k] / L);
         }
         r2 = distArr[0] * distArr[0] + distArr[1] * distArr[1] + distArr[2] * distArr[2]; // Dot product b/t atoms
-        if (r2 < 72.46) {
-            double s2or2 = 3.405 * 3.405 / r2; // Sigma squared over r squared
+        if (r2 < rCutoffSquared) {
+            double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
             double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
             double sor12 = sor6 * sor6; // Sigma over r to the twelfth
 
-            double forceOverR = 24 * 119.8 / r2 * (2 * sor12 - sor6);
-            localPotential += 4 * 119.8 * (sor12 - sor6);
+            double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
+            localPotential += 4 * EPS_STAR * (sor12 - sor6);
             for (int k = 0; k < 3; k++) {
-                devAtoms[atomidx].accelerations[k] += (forceOverR * distArr[k] / 47.9899);
-                devAtoms[j].accelerations[k] -= (forceOverR * distArr[k] / 47.9899);
+                devAtoms[atomidx].accelerations[k] += (forceOverR * distArr[k] / MASS);
+                devAtoms[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
             }
         }
     }
-    *netPotential += localPotential;
+    netPotential[atomidx] = localPotential;
 }
 
 __host__
 double calcForces(Atom *atomList) { // Cell pairs method to calculate forces
     double *netPotential;
-    cudaMallocManaged(&netPotential, sizeof(double));
-    *netPotential = 0;
+    cudaMallocManaged(&netPotential, N * sizeof(double));
 
     for (int j = 0; j < N; j++) { // Set all accelerations equal to zero
         for (int i = 0; i < 3; ++i) {
             atomList[j].accelerations[i] = 0;
         }
     }
-    Atom *devAtoms = atomList;
+    Atom *devAtoms;
     cudaMallocManaged(&devAtoms, N * sizeof(Atom));
     cudaMemcpy(devAtoms, atomList, N * sizeof(Atom), cudaMemcpyHostToDevice);
 
-    for (int c = 0; c < N; c++) {
-         calcForcesPerAtom<<<1, 1>>>(devAtoms, c, netPotential);
+    for (int c = 0; c < N - 1; c++) {
+         calcForcesPerAtom<<<1, 1>>>(devAtoms, c, netPotential, L, EPS_STAR, MASS, rCutoffSquared);
     }
+
     cudaDeviceSynchronize();
     cudaMemcpy(atomList, devAtoms, N * sizeof(Atom), cudaMemcpyDeviceToHost);
     cudaFree(devAtoms);
-    double result = *netPotential;
+
+    double result = 0;
+    for (int j = 0; j < N; j++) {
+        result += netPotential[j];
+    }
     cudaFree(netPotential);
     return result;
-}
-
-__host__
-std::vector<Atom> simpleCubicCell() {
-    double n = std::cbrt(N); // Number of atoms in each dimension
-
-    std::vector<Atom> atomList;
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            for (int k = 0; k < n; k++) {
-                atomList.push_back(Atom(i * SIGMA, j * SIGMA, k * SIGMA));
-            }
-        }
-    }
-    return atomList;
 }
 
 __host__
@@ -187,72 +173,12 @@ thrust::host_vector<Atom> faceCenteredCell() {
     return atomList;
 }
 
-
-__host__
-void radialDistribution() {
-    
-    std::string line;
-    std::string s;
-
-    int numDataPts = 100;
-    double data[numDataPts];
-    std::array<double, N> x;
-    std::array<double, N> y;
-    std::array<double, N> z;
-    // Arrays hold coordinates of each atom at each step
-    double dr = L / 2.0 / 100;
-
-    std::ifstream xyz ("out.xyz");
-
-    for (int i = 0; i < numTimeSteps; i++) {
-
-        std::getline(xyz, line); // Skips line with number of molecules
-        std::getline(xyz, line); // Skips comment line
-
-        for (int row = 0; row < N; row++) {
-            std::getline(xyz, line);
-            std::istringstream iss( line );
-
-            iss >> s >> x[row] >> y[row] >> z[row]; // Drop atom type, store coordinates of each atom
-        }
-        
-
-        if (i >= numTimeSteps / 2) {
-            for (int j = 0; j < N - 1; j++) {
-                for (int k = j + 1; k < N; k++) {
-                    double xDif = x[j] - x[k]; // Distance between atoms in x direction
-                    xDif = xDif - L * std::round(xDif / L); // Boundary conditions
-                    double yDif = y[j] - y[k];
-                    yDif = yDif - L * std::round(yDif / L);
-                    double zDif = z[j] - z[k];
-                    zDif = zDif - L * std::round(zDif / L);
-                    
-                    double r = std::sqrt(dotForCPU(xDif, yDif, zDif));
-
-                    if (r < L/2.0) {
-                        data[(int)(r / dr)] += 2.0;
-                    }
-                }
-            }
-        }
-    }
-    xyz.close();
-    std::ofstream radialData("Radial_Data.dat");
-
-    radialData << "r \t \t g(r) \n";
-    for (int i = 0; i < numDataPts; i++) {
-        double r = (i + .5) * dr;
-        data[i] /= (numTimeSteps / 2.0);
-        data[i] /= 4.0 * M_PI / 3.0 * (std::pow(i + 1, 3.0) - std::pow(i, 3.0)) * std::pow(dr, 3.0) * rho;
-        radialData << r << " , " << data[i] / N << "\n";
-    }
-    radialData.close();
-}
-
 int main() {
 
-    std::ofstream positionFile("out.xyz");
-    //std::ofstream debug("debug.dat");
+    std::cout << "Cell length: " << L << std::endl;
+    std::ofstream positionFile("outeverypairs.xyz");
+    std::ofstream energyFile("energyeverypair.dat");
+    std::ofstream debug("debugeverypairs.dat");
 
     // Arrays to hold energy values at each step of the process
     std::vector<double> KE;
@@ -268,7 +194,6 @@ int main() {
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < 3; j++) {
             atoms[i].positions[j] = atomList[i].positions[j];
-            atoms[i].velocities[j] = atomList[j].velocities[j];
         }
     }
 
@@ -292,13 +217,23 @@ int main() {
         }
 
         writePositions(atoms, positionFile, i);
+        debug << "Time: " << i << "\n";
+        for (int j = 0; j < N; j++) {
+            debug << "Atom number: " << j << "\n";
+            debug << "Positions: " << atoms[j].positions[0] << " " << atoms[j].positions[1] << " " << atoms[j].positions[2] << "\n";
+            debug << "Velocities: " << atoms[j].velocities[0] << " " << atoms[j].velocities[1]  << " " << atoms[j].velocities[2] << "\n";
+            debug << "Accelerations: " << atoms[j].accelerations[0] << " " << atoms[j].accelerations[1]  << " " << atoms[j].accelerations[2] << "\n";
+            debug << "Old accelerations: " << atoms[j].oldAccelerations[0] << " " << atoms[j].oldAccelerations[1] << " " << atoms[j].oldAccelerations[2] << "\n"; 
+            debug << "- \n";
+        }
+        debug << "------------------------------------------------- \n";
 
         for (int k = 0; k < N; ++k) { // Update positions
             for (int j = 0; j < 3; ++j) {
                 atoms[k].positions[j] += atoms[k].velocities[j] * timeStep 
                     + .5 * atoms[k].accelerations[j] * timeStep * timeStep;
                 atoms[k].positions[j] += -L * std::floor(atoms[k].positions[j] / L); // Keep atom inside box
-                atoms[k].oldAccelerations[j] = atomList[k].accelerations[j];
+                atoms[k].oldAccelerations[j] = atoms[k].accelerations[j];
             }
         }
 
@@ -316,11 +251,16 @@ int main() {
             thermostat(atoms);
         }
 
-        if (i > numTimeSteps / 2) { // Record energies after half of time has passed
+        if (i > -1) { // Record energies after half of time has passed
+            energyFile << "Time: " << i << "\n";
             double netKE = .5 * MASS * totalVelSquared;
             KE.push_back(netKE);
             PE.push_back(netPotential);
             netE.push_back(netPotential + netKE);
+            energyFile << "KE: " << netKE << "\n";
+            energyFile << "PE: " << netPotential << "\n";
+            energyFile << "Total energy: " << netPotential + netKE << "\n";
+            energyFile << "----------------------------------\n";
         }
     }
 
@@ -339,12 +279,12 @@ int main() {
     double PEstar = ((avgPE + Ulrc) / N) / EPS_STAR; // Reduced potential energy
 
     std::cout << "Reduced potential with long range correction: " << PEstar << std::endl;
+    debug << "Avg PE: " << avgPE << std::endl;
+    debug << "Reduced potential: " << PEstar << std::endl;
 
     positionFile.close();
-    //debug.close();
-
-    // std::cout << "Finding radial distribution \n";
-    // radialDistribution(); // Comment out function to reduce runtime
+    energyFile.close();
+    debug.close();
 
     return 0;
 }

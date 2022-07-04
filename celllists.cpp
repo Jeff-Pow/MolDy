@@ -40,7 +40,7 @@ const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 const int numTimeSteps = 5000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 4000;
+const int N = 512;
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
