@@ -24,7 +24,9 @@ const double Na = 6.022e23; // Atoms per mole
 const int numTimeSteps = 500; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 32; // Number of atoms in simulation
+const int N = 16384; // Number of atoms in simulation
+const int numThreads = 1024;
+const int numBlocks = ceil(N/numThreads);
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540e-21; // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -89,29 +91,32 @@ void thermostat(float3 *velocities) {
 
 __global__ 
 void firstStep(float3 *positions, float3 *velocities, float3 *accelerations, float3 *oldAccelerations, double L, double timeStep) {
-    for (int k = 0; k < N; ++k) { // Update positions
-        positions[k].x += velocities[k].x * timeStep + .5 * accelerations[k].x * timeStep * timeStep;
-        positions[k].y += velocities[k].y * timeStep + .5 * accelerations[k].y * timeStep * timeStep;
-        positions[k].z += velocities[k].z * timeStep + .5 * accelerations[k].z * timeStep * timeStep;
-        positions[k].x += -L * std::floor(positions[k].x / L); // Keep atom inside box
-        positions[k].y += -L * std::floor(positions[k].y / L); // Keep atom inside box
-        positions[k].z += -L * std::floor(positions[k].z / L); // Keep atom inside box
-        oldAccelerations[k].x = accelerations[k].x;
-        oldAccelerations[k].y = accelerations[k].y;
-        oldAccelerations[k].z = accelerations[k].z;
-    }
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k > N) return;
+    positions[k].x += velocities[k].x * timeStep + .5 * accelerations[k].x * timeStep * timeStep;
+    positions[k].y += velocities[k].y * timeStep + .5 * accelerations[k].y * timeStep * timeStep;
+    positions[k].z += velocities[k].z * timeStep + .5 * accelerations[k].z * timeStep * timeStep;
+    positions[k].x += -L * std::floor(positions[k].x / L); // Keep atom inside box
+    positions[k].y += -L * std::floor(positions[k].y / L); // Keep atom inside box
+    positions[k].z += -L * std::floor(positions[k].z / L); // Keep atom inside box
+    oldAccelerations[k].x = accelerations[k].x;
+    oldAccelerations[k].y = accelerations[k].y;
+    oldAccelerations[k].z = accelerations[k].z;
+    accelerations[k].x = 0;
+    accelerations[k].y = 0;
+    accelerations[k].z = 0;
 }
 
 __global__ 
 void thirdStep(float3 *velocities, float3 *accelerations, float3 *oldAccelerations, double L, float *totalVelSquared, double timeStep) {
-    for (int k = 0; k < N; ++k) { // Update velocities
-        velocities[k].x += .5 * (accelerations[k].x + oldAccelerations[k].x) * timeStep;
-        velocities[k].y += .5 * (accelerations[k].y + oldAccelerations[k].y) * timeStep;
-        velocities[k].z += .5 * (accelerations[k].z + oldAccelerations[k].z) * timeStep;
-        totalVelSquared[k] += velocities[k].x * velocities[k].x;
-        totalVelSquared[k] += velocities[k].y * velocities[k].y;
-        totalVelSquared[k] += velocities[k].z * velocities[k].x;
-    }
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k > N) return;
+    velocities[k].x += .5 * (accelerations[k].x + oldAccelerations[k].x) * timeStep;
+    velocities[k].y += .5 * (accelerations[k].y + oldAccelerations[k].y) * timeStep;
+    velocities[k].z += .5 * (accelerations[k].z + oldAccelerations[k].z) * timeStep;
+    totalVelSquared[k] += velocities[k].x * velocities[k].x;
+    totalVelSquared[k] += velocities[k].y * velocities[k].y;
+    totalVelSquared[k] += velocities[k].z * velocities[k].x;
 }
 
 __device__
@@ -136,12 +141,13 @@ void calcForcesPerAtom(float3 *positions, float3 *accelerations, int atomidx, fl
 
             float forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
             localPotential += 4 * EPS_STAR * (sor12 - sor6);
-            accelerations[atomidx].x += (forceOverR * distArr[0] / MASS);
-            accelerations[atomidx].y += (forceOverR * distArr[1] / MASS);
-            accelerations[atomidx].z += (forceOverR * distArr[2] / MASS);
-            accelerations[j].x -= (forceOverR * distArr[0] / MASS);
-            accelerations[j].y -= (forceOverR * distArr[1] / MASS);
-            accelerations[j].z -= (forceOverR * distArr[2] / MASS);
+            float accelFactor = forceOverR / MASS;
+            atomicAdd(&accelerations[atomidx].x, distArr[0] * accelFactor);
+            atomicAdd(&accelerations[atomidx].y, distArr[1] * accelFactor);
+            atomicAdd(&accelerations[atomidx].z, distArr[2] * accelFactor);
+            atomicAdd(&accelerations[j].x, -distArr[0] * accelFactor);
+            atomicAdd(&accelerations[j].y, -distArr[1] * accelFactor);
+            atomicAdd(&accelerations[j].z, -distArr[2] * accelFactor);
         }
     }
     netPotential[atomidx] = localPotential;
@@ -149,14 +155,9 @@ void calcForcesPerAtom(float3 *positions, float3 *accelerations, int atomidx, fl
 
 __global__
 void calcForces(float3 *positions, float3 *accelerations, float *netPotential, double L) { // Cell pairs method to calculate forces
-    for (int j = 0; j < N; j++) { // Set all accelerations equal to zero
-        for (int i = 0; i < 3; ++i) {
-            accelerations[j] = make_float3(0, 0, 0);
-        }
-    }
-    for (int c = 0; c < N - 1; c++) {
-         calcForcesPerAtom(positions, accelerations, c, netPotential, L);
-    }
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k > N) return;
+    calcForcesPerAtom(positions, accelerations, k, netPotential, L);
 }
 
 
@@ -209,12 +210,12 @@ int main() {
         cudaMemcpy(positions, devPos, N * 3 * sizeof(float), cudaMemcpyDeviceToHost);
         writePositions(positions, positionFile, i);
 
-        firstStep<<<1, 1>>>(devPos, devVel, devAccel, devOldAccel, L, timeStep); // Update position and write currect accel to old accel
+        firstStep<<<numBlocks, numThreads>>>(devPos, devVel, devAccel, devOldAccel, L, timeStep); // Update position and write currect accel to old accel
         cudaDeviceSynchronize();
 
         float *netPotential;
         cudaMallocManaged(&netPotential, N * sizeof(float));
-        calcForces<<<1, 1>>>(devPos, devAccel, netPotential, L); // Update accelerations and return potential of system
+        calcForces<<<numBlocks, numThreads>>>(devPos, devAccel, netPotential, L); // Update accelerations and return potential of system
         cudaDeviceSynchronize();
         float result = 0;
         for (int j = 0; j < N; j++) {
@@ -224,7 +225,7 @@ int main() {
 
         float *totalVelSquared;
         cudaMallocManaged(&totalVelSquared, N * sizeof(float));
-        thirdStep<<<1, 1>>>(devVel, devAccel, devOldAccel, L, totalVelSquared, timeStep); // Modify velocity a second time based off new forces
+        thirdStep<<<numBlocks, numThreads>>>(devVel, devAccel, devOldAccel, L, totalVelSquared, timeStep); // Modify velocity a second time based off new forces
         cudaDeviceSynchronize();
         double vel = 0;
         for (int j = 0; j < N; j++) {
