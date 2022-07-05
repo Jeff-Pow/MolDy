@@ -199,7 +199,7 @@ int main() {
     cudaMemcpy(devAccel, accelerations, N * sizeof(float3), cudaMemcpyHostToDevice);
     cudaMemcpy(devOldAccel, oldAccelerations, N * sizeof(float3), cudaMemcpyHostToDevice);
     std::cout << "test3" << std::endl;
-    thermostat<<<1, 1>>>(velocities); // Make velocities more accurate
+    thermostat<<<1, 1>>>(devVel); // Make velocities more accurate
 
     double count = .01;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
