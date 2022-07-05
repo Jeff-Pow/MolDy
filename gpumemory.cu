@@ -177,7 +177,6 @@ int main() {
     float3 accelerations[N];
     float3 oldAccelerations[N];
 
-    std::cout << "test1" << std::endl;
     faceCenteredCell(positions);
 
     std::random_device rd;
@@ -188,7 +187,6 @@ int main() {
         velocities[i].y = distribution(generator);
         velocities[i].z = distribution(generator);
     }
-    std::cout << "test2" << std::endl;
     float3 *devPos, *devVel, *devAccel, *devOldAccel;
     cudaMallocManaged(&devPos, N * sizeof(float3));
     cudaMallocManaged(&devVel, N * sizeof(float3));
@@ -198,7 +196,6 @@ int main() {
     cudaMemcpy(devVel, velocities, N * sizeof(float3), cudaMemcpyHostToDevice);
     cudaMemcpy(devAccel, accelerations, N * sizeof(float3), cudaMemcpyHostToDevice);
     cudaMemcpy(devOldAccel, oldAccelerations, N * sizeof(float3), cudaMemcpyHostToDevice);
-    std::cout << "test3" << std::endl;
     thermostat<<<1, 1>>>(devVel); // Make velocities more accurate
 
     double count = .01;
@@ -209,25 +206,18 @@ int main() {
             count += .01;
         }
 
-    std::cout << "test4" << std::endl;
         cudaMemcpy(positions, devPos, N * 3 * sizeof(float), cudaMemcpyDeviceToHost);
         writePositions(positions, positionFile, i);
-    std::cout << "test5" << std::endl;
 
         firstStep<<<1, 1>>>(devPos, devVel, devAccel, devOldAccel, L, timeStep); // Update position and write currect accel to old accel
         cudaDeviceSynchronize();
-    std::cout << "test6" << std::endl;
 
         float *netPotential;
         cudaMallocManaged(&netPotential, N * sizeof(float));
-    std::cout << "test7" << std::endl;
         calcForces<<<1, 1>>>(devPos, devAccel, netPotential, L); // Update accelerations and return potential of system
-    std::cout << "test8" << std::endl;
         cudaDeviceSynchronize();
-        std::cout << "test9" << std::endl;
         float result = 0;
         for (int j = 0; j < N; j++) {
-            std::cout << "test10\n";
             result += netPotential[j];
         }
         cudaFree(netPotential);
@@ -236,7 +226,6 @@ int main() {
         cudaMallocManaged(&totalVelSquared, N * sizeof(float));
         thirdStep<<<1, 1>>>(devVel, devAccel, devOldAccel, L, totalVelSquared, timeStep); // Modify velocity a second time based off new forces
         cudaDeviceSynchronize();
-        std::cout << "test11" << std::endl;
         double vel = 0;
         for (int j = 0; j < N; j++) {
             vel += j[totalVelSquared];
