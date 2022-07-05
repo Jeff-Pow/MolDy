@@ -78,7 +78,7 @@ __global__
 void thermostat(float3 *velocities) {
     double instantTemp = 0;
     for (int i = 0; i < N; i++) { // Add kinetic energy of each molecule to the temperature
-        instantTemp += MASS * velocities[i].x * velocities[i].x + velocities[i].y * velocities[i].y + velocities[i].z * velocities[i].z;
+        instantTemp += MASS * (velocities[i].x * velocities[i].x + velocities[i].y * velocities[i].y + velocities[i].z * velocities[i].z);
     }
     instantTemp /= (3 * N - 3);
     double tempScalar = std::sqrt(TARGET_TEMP / instantTemp);
