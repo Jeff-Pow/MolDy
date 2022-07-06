@@ -18,29 +18,13 @@ Device: GPU
 #include <fstream>
 #include <array>
 
-struct Atom {
-    double positions[3];
-    double velocities[3] = {0,0,0};
-    double accelerations[3] = {0,0,0};
-    double oldAccelerations[3] = {0,0,0};
-
-    Atom(double x, double y, double z) {
-        positions[0] = x;
-        positions[1] = y;
-        positions[2] = z;
-    }
-    Atom() {
-
-    }
-};
-
 const double Kb = 1.38064582 * 10e-23; // J / K
 const double Na = 6.022 * 10e23; // Atoms per mole
 
 const int numTimeSteps = 500; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 32; // Number of atoms in simulation
+const int N = 256; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * 10e-21; // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -56,8 +40,9 @@ const double TARGET_TEMP = tStar * EPS_STAR;
 const double MASS = 39.9 * 10 / Na / Kb; // Kelvin * ps^2 / A^2
 const double timeStep = dt_star * std::sqrt(MASS * SIGMA * SIGMA / EPS_STAR); // Convert time step to picoseconds
 
+
 __host__
-thrust::host_vector<Atom> faceCenteredCell() {
+void faceCenteredCell(float3 *pos) {
     // Each face centered unit cell has four atoms
     // Method creates a cubic arrangement of face centered unit cells
 
@@ -65,184 +50,169 @@ thrust::host_vector<Atom> faceCenteredCell() {
     double dr = L / n; // Distance between two corners in a unit cell
     double dro2 = dr / 2.0; // dr over 2
 
-    thrust::host_vector<Atom> vect;
+    int idx = 0;
 
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
             for (int k = 0; k < n; k++) {
-                vect.push_back(Atom(i * dr, j * dr, k * dr));
-                vect.push_back(Atom(i * dr + dro2, j * dr + dro2, k * dr));
-                vect.push_back(Atom(i * dr + dro2, j * dr, k * dr + dro2));
-                vect.push_back(Atom(i * dr, j * dr + dro2, k * dr + dro2));
+                pos[idx++] = make_float3(i * dr, j * dr, k * dr);
+                pos[idx++] = make_float3(i * dr + dro2, j * dr + dro2, k * dr);
+                pos[idx++] = make_float3(i * dr + dro2, j * dr, k * dr + dro2);
+                pos[idx++] = make_float3(i * dr, j * dr + dro2, k * dr + dro2);
             }
         }
     }
-    return vect;
 }
 
 __host__
-void writePositions(Atom *atoms, std::ofstream &positionFile, int i) {
+void writePositions(float3 *positions, std::ofstream &positionFile, int i) {
     positionFile << N << "\nTime: " << i << "\n";
     for (int j = 0; j < N; ++j) { // Write positions to xyz file
-        positionFile << "A " << atoms[j].positions[0] << " " << atoms[j].positions[1] << " " << atoms[j].positions[2] << "\n";
+        positionFile << "A " << positions[j].x << " " << positions[j].y << " " << positions[j].z << "\n";
+    }
+
+}
+
+__host__
+void writeToDebugFile(float3 *positions, float3 *velocities, float3 *accelerations, float3 *oldAccelerations, std::ofstream &debug, int i) {
+    debug << "Time: " << i << "\n";
+    for (int j = 0; j < N; j++) {
+        debug << "Atom number: " << j << "\n";
+        debug << "Positions: " << positions[j].x << " " << positions[j].y << " " << positions[j].z << "\n";
+        debug << "Velocities: " << velocities[j].x << " " << velocities[j].y << " " << velocities[j].z << "\n";
+        debug << "Accelerations: " << accelerations[j].x << " " << accelerations[j].y << " " << accelerations[j].z << "\n";
+        debug << "Old accelerations: " << oldAccelerations[j].x << " " << oldAccelerations[j].y << " " << oldAccelerations[j].z << "\n";
+        debug << "- \n";
+    }
+    debug << "-------------------------------------------------\n";
+}
+
+__global__ 
+void thermostat(float3 *velocities) {
+    float instantTemp = 0;
+    for (int i = 0; i < N; i++) { // Add kinetic energy of each molecule to the temperature
+        instantTemp += MASS * (velocities[i].x * velocities[i].x + velocities[i].y * velocities[i].y + velocities[i].z * velocities[i].z);
+    }
+    instantTemp /= (3 * N - 3);
+    float tempScalar = std::sqrt(TARGET_TEMP / instantTemp);
+    printf("Temp scalar: %f\n", tempScalar);
+    for (int i = 0; i < N; i++) {
+        velocities[i].x *= tempScalar; // V = V * lambda
+        velocities[i].y *= tempScalar; // V = V * lambda
+        velocities[i].z *= tempScalar; // V = V * lambda
+    }
+}
+
+__global__ 
+void firstStep(float3 *positions, float3 *velocities, float3 *accelerations, float3 *oldAccelerations, double L, double timeStep) {
+    for (int k = 0; k < N; ++k) { // Update positions
+        positions[k].x += velocities[k].x * timeStep + .5 * accelerations[k].x * timeStep * timeStep;
+        positions[k].y += velocities[k].y * timeStep + .5 * accelerations[k].y * timeStep * timeStep;
+        positions[k].z += velocities[k].z * timeStep + .5 * accelerations[k].z * timeStep * timeStep;
+        positions[k].x += -L * std::floor(positions[k].x / L); // Keep atom inside box
+        positions[k].y += -L * std::floor(positions[k].y / L); // Keep atom inside box
+        positions[k].z += -L * std::floor(positions[k].z / L); // Keep atom inside box
+        oldAccelerations[k].x = accelerations[k].x;
+        oldAccelerations[k].y = accelerations[k].y;
+        oldAccelerations[k].z = accelerations[k].z;
+    }
+}
+
+__global__ 
+void thirdStep(float3 *velocities, float3 *accelerations, float3 *oldAccelerations, double L, float *totalVelSquared, double timeStep) {
+    for (int k = 0; k < N; ++k) { // Update velocities
+        velocities[k].x += .5 * (accelerations[k].x + oldAccelerations[k].x) * timeStep;
+        velocities[k].y += .5 * (accelerations[k].y + oldAccelerations[k].y) * timeStep;
+        velocities[k].z += .5 * (accelerations[k].z + oldAccelerations[k].z) * timeStep;
+        totalVelSquared[k] += velocities[k].x * velocities[k].x;
+        totalVelSquared[k] += velocities[k].y * velocities[k].y;
+        totalVelSquared[k] += velocities[k].z * velocities[k].x;
     }
 }
 
 __device__
-void dotForGPU(double x, double y, double z, double &r2) { // Returns dot product of a vector
-    r2 = x * x + y * y + z * z;
-}
-
-__host__
-double dotForCPU(double x, double y, double z) {
-    return x * x + y * y + z * z;
-}
-
-__global__ 
-void thermostatForGPU(Atom *atoms) {
-    double instantTemp = 0;
-    for (int i = 0; i < N; i++) { // Add kinetic energy of each molecule to the temperature
-        instantTemp += MASS * atoms[i].velocities[0] * atoms[i].velocities[0] + atoms[i].velocities[1] * atoms[i].velocities[1] + atoms[i].velocities[2] * atoms[i].velocities[2];
-    }
-    instantTemp /= (3 * N - 3);
-    double tempScalar = std::sqrt(TARGET_TEMP / instantTemp);
-    for (int i = 0; i < N; i++) {
-        for (int j = 0; j < 3; ++j) {
-            atoms[i].velocities[j] *= tempScalar; // V = V * lambda
-        }
-    }
-}
-
-__host__
-void thermostatForCPU(Atom *atoms) {
-    double instantTemp = 0;
-    for (int i = 0; i < N; i++) { // Add kinetic energy of each molecule to the temperature
-        instantTemp += MASS * atoms[i].velocities[0] * atoms[i].velocities[0] + atoms[i].velocities[1] * atoms[i].velocities[1] + atoms[i].velocities[2] * atoms[i].velocities[2];
-    }
-    instantTemp /= (3 * N - 3);
-    double tempScalar = std::sqrt(TARGET_TEMP / instantTemp);
-    for (int i = 0; i < N; i++) {
-        for (int j = 0; j < 3; ++j) {
-            atoms[i].velocities[j] *= tempScalar; // V = V * lambda
-        }
-    }
-}
-
-__global__ 
-void firstStep(Atom *atoms, double L, double timeStep) {
-    for (int k = 0; k < N; ++k) { // Update positions
-        for (int j = 0; j < 3; ++j) {
-            atoms[k].positions[j] += atoms[k].velocities[j] * timeStep 
-                + .5 * atoms[k].accelerations[j] * timeStep * timeStep;
-            atoms[k].positions[j] += -L * std::floor(atoms[k].positions[j] / L); // Keep atom inside box
-            atoms[k].oldAccelerations[j] = atoms[k].accelerations[j];
-        }
-    }
-}
-
-__global__ 
-void thirdStep(Atom *atoms, double L, double *totalVelSquared, double timeStep) {
-    for (int k = 0; k < N; ++k) { // Update velocities
-        for (int j = 0; j < 3; ++j) {
-            atoms[k].velocities[j] += .5 * (atoms[k].accelerations[j] + atoms[k].oldAccelerations[j]) * timeStep;
-            totalVelSquared[k] += atoms[k].velocities[j] * atoms[k].velocities[j];
-        }
-    }
-}
-
-__global__
-void calcForcesPerAtom(Atom *devAtoms, int atomidx, double *netPotential, double L) {
-    double distArr[3]; // Record distance between atoms
-    double localPotential = 0;
-    double r2;
+void calcForcesPerAtom(float3 *positions, float3 *accelerations, int atomidx, float *netPotential, double L) {
+    float distArr[3]; // Record distance between atoms
+    float localPotential = 0;
+    float r2;
 
     for (int j = atomidx + 1; j < N; j++) {
-        for (int k = 0; k < 3; k++) {
-            // Apply boundary conditions
-            distArr[k] = devAtoms[atomidx].positions[k] - devAtoms[j].positions[k];
-            distArr[k] -= L * std::round(distArr[k] / L);
-        }
+        // Apply boundary conditions
+        distArr[0] = positions[atomidx].x - positions[j].x;
+        distArr[1] = positions[atomidx].y - positions[j].y;
+        distArr[2] = positions[atomidx].z - positions[j].z;
+        distArr[0] -= L * std::round(distArr[0] / L);
+        distArr[1] -= L * std::round(distArr[1] / L);
+        distArr[2] -= L * std::round(distArr[2] / L);
         r2 = distArr[0] * distArr[0] + distArr[1] * distArr[1] + distArr[2] * distArr[2]; // Dot product b/t atoms
         if (r2 < rCutoffSquared) {
-            double s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
-            double sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
-            double sor12 = sor6 * sor6; // Sigma over r to the twelfth
+            float s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
+            float sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
+            float sor12 = sor6 * sor6; // Sigma over r to the twelfth
 
-            double forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
+            float forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
             localPotential += 4 * EPS_STAR * (sor12 - sor6);
-            for (int k = 0; k < 3; k++) {
-                devAtoms[atomidx].accelerations[k] += (forceOverR * distArr[k] / MASS);
-                devAtoms[j].accelerations[k] -= (forceOverR * distArr[k] / MASS);
-            }
+            accelerations[atomidx].x += (forceOverR * distArr[0] / MASS);
+            accelerations[atomidx].y += (forceOverR * distArr[1] / MASS);
+            accelerations[atomidx].z += (forceOverR * distArr[2] / MASS);
+            accelerations[j].x -= (forceOverR * distArr[0] / MASS);
+            accelerations[j].y -= (forceOverR * distArr[1] / MASS);
+            accelerations[j].z -= (forceOverR * distArr[2] / MASS);
         }
     }
     netPotential[atomidx] = localPotential;
 }
 
-__host__
-double calcForces(Atom *atoms) { // Cell pairs method to calculate forces
-    double *netPotential;
-    cudaMallocManaged(&netPotential, N * sizeof(double));
-
+__global__
+void calcForces(float3 *positions, float3 *accelerations, float *netPotential, double L) { // Cell pairs method to calculate forces
     for (int j = 0; j < N; j++) { // Set all accelerations equal to zero
         for (int i = 0; i < 3; ++i) {
-            atoms[j].accelerations[i] = 0;
+            accelerations[j] = make_float3(0, 0, 0);
         }
     }
-
     for (int c = 0; c < N - 1; c++) {
-         calcForcesPerAtom<<<1, 1>>>(atoms, c, netPotential, L);
+         calcForcesPerAtom(positions, accelerations, c, netPotential, L);
     }
-
-    cudaDeviceSynchronize();
-
-    double result = 0;
-    for (int j = 0; j < N; j++) {
-        result += netPotential[j];
-    }
-    cudaFree(netPotential);
-    return result;
 }
 
 
 int main() {
-
     std::cout << "Cell length: " << L << std::endl;
-    std::ofstream positionFile("outmultithreadeverypairs.xyz");
-    std::ofstream energyFile("energymultithreadeverypair.dat");
-    std::ofstream debug("debugmultithreadeverypairs.dat");
+    std::ofstream positionFile("outgpumemory.xyz");
+    std::ofstream energyFile("energygpumemory.dat");
+    std::ofstream debug("debuggpumemory.dat");
 
     // Arrays to hold energy values at each step of the process
-    std::vector<double> KE;
-    std::vector<double> PE;
-    std::vector<double> netE;
+    std::vector<float> KE;
+    std::vector<float> PE;
+    std::vector<float> netE;
+
+    float3 positions[N];
+    float3 velocities[N];
+    float3 accelerations[N];
+    float3 oldAccelerations[N];
+
+    faceCenteredCell(positions);
 
     std::random_device rd;
     std::default_random_engine generator(3); // (rd())
-    std::uniform_real_distribution<double> distribution(-1.0, 1.0);
-
-    thrust::host_vector<Atom> vect = faceCenteredCell();
-    Atom atoms[N];
-    for (int i = 0; i < N; i++) {
-        for (int j = 0; j < 3; j++) {
-            atoms[i].positions[j] = vect[i].positions[j];
-        }
-    }
-
+    std::uniform_real_distribution<float> distribution(-1.0, 1.0);
     for (int i = 0; i < N; ++i) { // Randomize velocities
-         for (int j = 0; j < 3; ++j) {
-             atoms[i].velocities[j] = distribution(generator);
-         }
+        velocities[i].x = distribution(generator);
+        velocities[i].y = distribution(generator);
+        velocities[i].z = distribution(generator);
     }
-    thermostatForCPU(atoms); // Make velocities more accurate
+    float3 *devPos, *devVel, *devAccel, *devOldAccel;
+    cudaMallocManaged(&devPos, N * sizeof(float3));
+    cudaMallocManaged(&devVel, N * sizeof(float3));
+    cudaMallocManaged(&devAccel, N * sizeof(float3));
+    cudaMallocManaged(&devOldAccel, N * sizeof(float3));
+    cudaMemcpy(devPos, positions, N * sizeof(float3), cudaMemcpyHostToDevice);
+    cudaMemcpy(devVel, velocities, N * sizeof(float3), cudaMemcpyHostToDevice);
+    cudaMemcpy(devAccel, accelerations, N * sizeof(float3), cudaMemcpyHostToDevice);
+    cudaMemcpy(devOldAccel, oldAccelerations, N * sizeof(float3), cudaMemcpyHostToDevice);
+    thermostat<<<1, 1>>>(devVel); // Make velocities more accurate
 
-    double netPotential;
-    
-    Atom *devAtoms;
-    cudaMallocManaged(&devAtoms, N * sizeof(Atom));
-    cudaMemcpy(devAtoms, atoms, N * sizeof(Atom), cudaMemcpyHostToDevice);
-    double atomPositions[N][3];
-    
     double count = .01;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
 
@@ -250,46 +220,48 @@ int main() {
             std::cout << count * 100 << "% \n";
             count += .01;
         }
-        cudaMemcpy(atomPositions, devAtoms->positions, N * 3 * sizeof(double), cudaMemcpyDeviceToHost);
-        writePositions(atoms, positionFile, i);
-        /*
-        debug << "Time: " << i << "\n";
+
+        cudaMemcpy(positions, devPos, N * sizeof(float3), cudaMemcpyDeviceToHost);
+        writePositions(positions, positionFile, i);
+
+        cudaMemcpy(velocities, devVel, N * sizeof(float3), cudaMemcpyDeviceToHost);
+        cudaMemcpy(accelerations, devAccel, N * sizeof(float3), cudaMemcpyDeviceToHost);
+        cudaMemcpy(oldAccelerations, devOldAccel, N * sizeof(float3), cudaMemcpyDeviceToHost);
+        writeToDebugFile(positions, velocities, accelerations, oldAccelerations, debug, i);
+
+        firstStep<<<1, 1>>>(devPos, devVel, devAccel, devOldAccel, L, timeStep); // Update position and write currect accel to old accel
+        cudaDeviceSynchronize();
+
+        float *netPotential;
+        cudaMallocManaged(&netPotential, N * sizeof(float));
+        calcForces<<<1, 1>>>(devPos, devAccel, netPotential, L); // Update accelerations and return potential of system
+        cudaDeviceSynchronize();
+        float result = 0;
         for (int j = 0; j < N; j++) {
-            debug << "Atom number: " << j << "\n";
-            debug << "Positions: " << atoms[j].positions[0] << " " << atoms[j].positions[1] << " " << atoms[j].positions[2] << "\n";
-            debug << "Velocities: " << atoms[j].velocities[0] << " " << atoms[j].velocities[1]  << " " << atoms[j].velocities[2] << "\n";
-            debug << "Accelerations: " << atoms[j].accelerations[0] << " " << atoms[j].accelerations[1]  << " " << atoms[j].accelerations[2] << "\n";
-            debug << "Old accelerations: " << atoms[j].oldAccelerations[0] << " " << atoms[j].oldAccelerations[1] << " " << atoms[j].oldAccelerations[2] << "\n"; 
-            debug << "- \n";
+            result += netPotential[j];
         }
-        debug << "------------------------------------------------- \n";
-        */
+        cudaFree(netPotential);
 
-        firstStep<<<1, 1>>>(devAtoms, L, timeStep); // Update position and write currect accel to old accel
-
-        std::cout << "test8\n";
-        netPotential = calcForces(devAtoms); // Update accelerations and return potential of system
-        std::cout << "test9\n";
-
-        double *totalVelSquared;
-        cudaMallocManaged(&totalVelSquared, N * sizeof(double));
-        thirdStep<<<1, 1>>>(devAtoms, L, totalVelSquared, timeStep); // Modify velocity a second time based off new forces
-        double num = 0;
+        float *totalVelSquared;
+        cudaMallocManaged(&totalVelSquared, N * sizeof(float));
+        thirdStep<<<1, 1>>>(devVel, devAccel, devOldAccel, L, totalVelSquared, timeStep); // Modify velocity a second time based off new forces
+        cudaDeviceSynchronize();
+        double vel = 0;
         for (int j = 0; j < N; j++) {
-            num += j[totalVelSquared];
+            vel += j[totalVelSquared];
         }
         cudaFree(totalVelSquared);
 
         if (i < numTimeSteps / 2 && i % 5 == 0) { // Apply velocity modifications for first half of sample
-            thermostatForGPU<<<1, 1>>>(atoms);
+            thermostat<<<1, 1>>>(devVel);
         }
 
         if (i > -1) { // Record energies after half of time has passed
             energyFile << "Time: " << i << "\n";
-            double netKE = .5 * MASS * num;
+            double netKE = .5 * MASS * vel;
             KE.push_back(netKE);
-            PE.push_back(netPotential);
-            netE.push_back(netPotential + netKE);
+            PE.push_back(result);
+            netE.push_back(result + netKE);
             /*
             energyFile << "KE: " << netKE << "\n";
             energyFile << "PE: " << netPotential << "\n";
@@ -299,7 +271,10 @@ int main() {
         }
     }
     
-    cudaFree(devAtoms);
+    cudaFree(devPos);
+    cudaFree(devVel);
+    cudaFree(devAccel);
+    cudaFree(devOldAccel);
 
     double avgPE = 0; // Average PE array
     for (double i : PE) {

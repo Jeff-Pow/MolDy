@@ -37,7 +37,7 @@ struct Atom {
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 500; // Parameters to change for simulation
+const int numTimeSteps = 5; // Parameters to change for simulation
 const double dt_star= .001;
 
 const int N = 32; // Number of atoms in simulation
