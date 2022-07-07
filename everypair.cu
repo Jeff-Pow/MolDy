@@ -37,10 +37,10 @@ struct Atom {
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 5; // Parameters to change for simulation
+const int numTimeSteps = 5000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 32; // Number of atoms in simulation
+const int N = 500; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -79,10 +79,13 @@ __host__
 void thermostat(Atom *atomList) {
     double instantTemp = 0;
     for (int i = 0; i < N; i++) { // Add kinetic energy of each molecule to the temperature
-        instantTemp += MASS * dotForCPU(atomList[i].velocities[0], atomList[i].velocities[1], atomList[i].velocities[2]);
+        double num = dotForCPU(atomList[i].velocities[0], atomList[i].velocities[1], atomList[i].velocities[2]);
+        instantTemp += MASS * num;
+        //printf("Atom number: %i, dot product: %f\n", i, num);
     }
     instantTemp /= (3 * N - 3);
     double tempScalar = std::sqrt(TARGET_TEMP / instantTemp);
+    //printf("Temp scalar: %f\n", tempScalar);
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < 3; ++j) {
             atomList[i].velocities[j] *= tempScalar; // V = V * lambda
@@ -123,6 +126,9 @@ __host__
 double calcForces(Atom *atomList) { // Cell pairs method to calculate forces
     double *netPotential;
     cudaMallocManaged(&netPotential, N * sizeof(double));
+    for (int r = 0; r < N; r++) {
+        netPotential[r] = 0;
+    }
 
     for (int j = 0; j < N; j++) { // Set all accelerations equal to zero
         for (int i = 0; i < 3; ++i) {
@@ -251,7 +257,7 @@ int main() {
             thermostat(atoms);
         }
 
-        if (i > -1) { // Record energies after half of time has passed
+        if (i > numTimeSteps / 2) { // Record energies after half of time has passed
             energyFile << "Time: " << i << "\n";
             double netKE = .5 * MASS * totalVelSquared;
             KE.push_back(netKE);
