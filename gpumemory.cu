@@ -21,10 +21,10 @@ Device: GPU
 const float Kb = 1.38064582e-23; // J / K
 const float Na = 6.022e23; // Atoms per mole
 
-const int numTimeSteps = 50; // Parameters to change for simulation
+const int numTimeSteps = 5000; // Parameters to change for simulation
 const float dt_star= .001;
 
-const int N = 4000; // Number of atoms in simulation
+const int N = 500; // Number of atoms in simulation
 const float SIGMA = 3.405; // Angstroms
 const float EPSILON = 1.6540e-21; // Joules
 const float EPS_STAR = EPSILON / Kb; // ~ 119.8 K
