@@ -8,6 +8,7 @@ Device: GPU
 */
 
 #include <cuda.h>
+#include "helper_math.h"
 
 #include <iostream>
 #include <sstream>
@@ -19,10 +20,10 @@ Device: GPU
 const float Kb = 1.38064582e-23; // J / K
 const float Na = 6.022e23; // Atoms per mole
 
-const int numTimeSteps = 5000; // Parameters to change for simulation
+const int numTimeSteps = 50; // Parameters to change for simulation
 const float dt_star= .001;
 
-const int N = 500; // Number of atoms in simulation
+const int N = 32; // Number of atoms in simulation
 const float SIGMA = 3.405; // Angstroms
 const float EPSILON = 1.6540e-21; // Joules
 const float EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -91,34 +92,12 @@ void writeToDebugFile(float3 *positions, float3 *velocities, float3 *acceleratio
 __global__ 
 void thermostat(float3 *velocities) {
     float instantTemp = 0;
-    //printf("GPU\n");
     for (int i = 0; i < N; i++) { // Add kinetic energy of each molecule to the temperature
         float num = velocities[i].x * velocities[i].x + velocities[i].y * velocities[i].y + velocities[i].z * velocities[i].z;
         instantTemp += MASS * (num);
-        //printf("Atom: %i, dot product: %f\n", i, num);
     }
     instantTemp /= (3 * N - 3);
     float tempScalar = std::sqrt(TARGET_TEMP / instantTemp);
-    //printf("Temp scalar: %f\n", tempScalar);
-    for (int i = 0; i < N; i++) {
-        velocities[i].x *= tempScalar; // V = V * lambda
-        velocities[i].y *= tempScalar; // V = V * lambda
-        velocities[i].z *= tempScalar; // V = V * lambda
-    }
-}
-
-__host__
-void thermostatCPU(float3 *velocities) {
-    float instantTemp = 0;
-    //printf("CPU\n");
-    for (int i = 0; i < N; i++) { // Add kinetic energy of each molecule to the temperature
-        float num = velocities[i].x * velocities[i].x + velocities[i].y * velocities[i].y + velocities[i].z * velocities[i].z;
-        instantTemp += MASS * (num);
-        //printf("Atom: %i, dot product: %f\n", i, num);
-    }
-    instantTemp /= (3 * N - 3);
-    float tempScalar = std::sqrt(TARGET_TEMP / instantTemp);
-    //printf("Temp scalar: %f\n", tempScalar);
     for (int i = 0; i < N; i++) {
         velocities[i].x *= tempScalar; // V = V * lambda
         velocities[i].y *= tempScalar; // V = V * lambda
@@ -138,6 +117,7 @@ void firstStep(float3 *positions, float3 *velocities, float3 *accelerations, flo
         oldAccelerations[k].x = accelerations[k].x;
         oldAccelerations[k].y = accelerations[k].y;
         oldAccelerations[k].z = accelerations[k].z;
+        oldAccelerations[k] = accelerations[k];
         accelerations[k] = make_float3(0, 0, 0);
     }
 }
@@ -154,21 +134,24 @@ void thirdStep(float3 *velocities, float3 *accelerations, float3 *oldAcceleratio
 
 __device__
 void calcForcesPerAtom(float3 *positions, float3 *accelerations, float *netPotential, float L) {
-    int atomidx = blockIdx.x * blockDim.x + threadIdx.x;
+    int atomidx = blockIdx.x * numThreadsPerBlock + threadIdx.x;
     if (atomidx >= N - 1) return;
-    float distArr[3]; // Record distance between atoms
+
+    float3 distArr; // Record distance between atoms
     float localPotential = 0;
     float r2;
 
     for (int j = atomidx + 1; j < N; j++) {
         // Apply boundary conditions
-        distArr[0] = positions[atomidx].x - positions[j].x;
-        distArr[1] = positions[atomidx].y - positions[j].y;
-        distArr[2] = positions[atomidx].z - positions[j].z;
-        distArr[0] -= L * std::round(distArr[0] / L);
-        distArr[1] -= L * std::round(distArr[1] / L);
-        distArr[2] -= L * std::round(distArr[2] / L);
-        r2 = distArr[0] * distArr[0] + distArr[1] * distArr[1] + distArr[2] * distArr[2]; // Dot product b/t atoms
+        distArr.x = positions[atomidx].x - positions[j].x;
+        distArr.y = positions[atomidx].y - positions[j].y;
+        distArr.z = positions[atomidx].z - positions[j].z;
+        distArr.x -= L * std::round(distArr.x / L);
+        distArr.y -= L * std::round(distArr.y / L);
+        distArr.z -= L * std::round(distArr.z / L);
+        r2 = dot(distArr, distArr);
+        printf("%i on %i  %f-%f=%f, %f-%f=%f, %f-%f=%f  %f\n", atomidx, j, positions[atomidx].x, positions[j].x, distArr.x,
+            positions[atomidx].y, positions[j].y, distArr.y, positions[atomidx].z, positions[j].z, distArr.z, r2);
         if (r2 < rCutoffSquared) {
             float s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
             float sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
@@ -176,12 +159,15 @@ void calcForcesPerAtom(float3 *positions, float3 *accelerations, float *netPoten
 
             float forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
             localPotential += 4 * EPS_STAR * (sor12 - sor6);
-            atomicAdd(&accelerations[atomidx].x, (forceOverR * distArr[0] / MASS));
-            atomicAdd(&accelerations[atomidx].y, (forceOverR * distArr[1] / MASS));
-            atomicAdd(&accelerations[atomidx].z, (forceOverR * distArr[2] / MASS));
-            atomicAdd(&accelerations[j].x, (-forceOverR * distArr[0] / MASS));
-            atomicAdd(&accelerations[j].y, (-forceOverR * distArr[1] / MASS));
-            atomicAdd(&accelerations[j].z, (-forceOverR * distArr[2] / MASS));
+            //printf("%i on %i: %f \t r2: %f\n", atomidx, j, forceOverR, r2);
+            atomicAdd(&accelerations[atomidx].x, (forceOverR * distArr.x / MASS));
+            atomicAdd(&accelerations[atomidx].y, (forceOverR * distArr.y / MASS));
+            atomicAdd(&accelerations[atomidx].z, (forceOverR * distArr.z / MASS));
+            atomicAdd(&accelerations[j].x, (-forceOverR * distArr.x / MASS));
+            atomicAdd(&accelerations[j].y, (-forceOverR * distArr.y / MASS));
+            atomicAdd(&accelerations[j].z, (-forceOverR * distArr.z / MASS));
+            accelerations[atomidx] += (forceOverR * distArr / MASS);
+            accelerations[j] -= (forceOverR * distArr / MASS);
         }
     }
     netPotential[atomidx] = localPotential;
@@ -256,13 +242,14 @@ int main() {
         for (int r = 0; r < N; r++) {
             netPotential[r] = 0;
         }
-        calcForces<<<numBlocks, numThreadsPerBlock>>>(devPos, devAccel, netPotential, L); // Update accelerations and return potential of system
+        calcForces<<<1, numThreadsPerBlock>>>(devPos, devAccel, netPotential, L); // Update accelerations and return potential of system
         cudaDeviceSynchronize();
         float result = 0;
         for (int j = 0; j < N; j++) {
             result += netPotential[j];
         }
         cudaFree(netPotential);
+        exit(1);
 
         float *totalVelSquared;
         cudaMallocManaged(&totalVelSquared, N * sizeof(float));

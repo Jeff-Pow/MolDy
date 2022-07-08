@@ -6,8 +6,6 @@ Device: GPU
     __host__ - Runs on the CPU, called from the CPU.
      __global__ functions can be called from other __global__ functions starting compute capability 3.5.
 */
-#include <thrust/device_vector.h>
-#include <thrust/host_vector.h>
 
 #include <cuda.h>
 
@@ -21,10 +19,10 @@ Device: GPU
 const float Kb = 1.38064582e-23; // J / K
 const float Na = 6.022e23; // Atoms per mole
 
-const int numTimeSteps = 5000; // Parameters to change for simulation
+const int numTimeSteps = 50; // Parameters to change for simulation
 const float dt_star= .001;
 
-const int N = 500; // Number of atoms in simulation
+const int N = 32; // Number of atoms in simulation
 const float SIGMA = 3.405; // Angstroms
 const float EPSILON = 1.6540e-21; // Joules
 const float EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -165,6 +163,8 @@ void calcForcesPerAtom(float3 *positions, float3 *accelerations, int atomidx, fl
         distArr[1] -= L * std::round(distArr[1] / L);
         distArr[2] -= L * std::round(distArr[2] / L);
         r2 = distArr[0] * distArr[0] + distArr[1] * distArr[1] + distArr[2] * distArr[2]; // Dot product b/t atoms
+        printf("%i on %i  %f-%f=%f, %f-%f=%f, %f-%f=%f  %f\n", atomidx, j, positions[atomidx].x, positions[j].x, distArr[0],
+            positions[atomidx].y, positions[j].y, distArr[1], positions[atomidx].z, positions[j].z, distArr[2], r2);
         if (r2 < rCutoffSquared) {
             float s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
             float sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
@@ -172,6 +172,7 @@ void calcForcesPerAtom(float3 *positions, float3 *accelerations, int atomidx, fl
 
             float forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
             localPotential += 4 * EPS_STAR * (sor12 - sor6);
+            //printf("%i on %i: %f \t r2: %f\n", atomidx, j, forceOverR, r2);
             accelerations[atomidx].x += (forceOverR * distArr[0] / MASS);
             accelerations[atomidx].y += (forceOverR * distArr[1] / MASS);
             accelerations[atomidx].z += (forceOverR * distArr[2] / MASS);
@@ -276,6 +277,7 @@ int main() {
             vel += totalVelSquared[j];
         }
         cudaFree(totalVelSquared);
+        exit(1);
 
         if (i < numTimeSteps / 2 && i % 5 == 0) { // Apply velocity modifications for first half of sample
             thermostat<<<1, 1>>>(devVel);
