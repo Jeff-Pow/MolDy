@@ -20,15 +20,15 @@ Device: GPU
 const float Kb = 1.38064582e-23; // J / K
 const float Na = 6.022e23; // Atoms per mole
 
-const int numTimeSteps = 50; // Parameters to change for simulation
+const int numTimeSteps = 500; // Parameters to change for simulation
 const float dt_star= .001;
 
-const int N = 32; // Number of atoms in simulation
+const int N = 256; // Number of atoms in simulation
 const float SIGMA = 3.405; // Angstroms
 const float EPSILON = 1.6540e-21; // Joules
 const float EPS_STAR = EPSILON / Kb; // ~ 119.8 K
 
-const int numThreadsPerBlock = 1024;
+const int numThreadsPerBlock = 256;
 const int numBlocks = ceil(N / numThreadsPerBlock);
 
 const float rhostar = .45; // Dimensionless density of gas
@@ -111,13 +111,12 @@ void firstStep(float3 *positions, float3 *velocities, float3 *accelerations, flo
         positions[k].x += velocities[k].x * timeStep + .5 * accelerations[k].x * timeStep * timeStep;
         positions[k].y += velocities[k].y * timeStep + .5 * accelerations[k].y * timeStep * timeStep;
         positions[k].z += velocities[k].z * timeStep + .5 * accelerations[k].z * timeStep * timeStep;
-        positions[k].x += -L * std::floor(positions[k].x / L); // Keep atom inside box
-        positions[k].y += -L * std::floor(positions[k].y / L); // Keep atom inside box
-        positions[k].z += -L * std::floor(positions[k].z / L); // Keep atom inside box
+        positions[k].x += -L * floor(positions[k].x / L); // Keep atom inside box
+        positions[k].y += -L * floor(positions[k].y / L); // Keep atom inside box
+        positions[k].z += -L * floor(positions[k].z / L); // Keep atom inside box
         oldAccelerations[k].x = accelerations[k].x;
         oldAccelerations[k].y = accelerations[k].y;
         oldAccelerations[k].z = accelerations[k].z;
-        oldAccelerations[k] = accelerations[k];
         accelerations[k] = make_float3(0, 0, 0);
     }
 }
@@ -128,7 +127,7 @@ void thirdStep(float3 *velocities, float3 *accelerations, float3 *oldAcceleratio
         velocities[k].x += .5 * (accelerations[k].x + oldAccelerations[k].x) * timeStep;
         velocities[k].y += .5 * (accelerations[k].y + oldAccelerations[k].y) * timeStep;
         velocities[k].z += .5 * (accelerations[k].z + oldAccelerations[k].z) * timeStep;
-        totalVelSquared[k] = velocities[k].x * velocities[k].x + velocities[k].y * velocities[k].y +velocities[k].z * velocities[k].z; 
+        totalVelSquared[k] = dot(velocities[k], velocities[k]);
     }
 }
 
@@ -146,12 +145,12 @@ void calcForcesPerAtom(float3 *positions, float3 *accelerations, float *netPoten
         distArr.x = positions[atomidx].x - positions[j].x;
         distArr.y = positions[atomidx].y - positions[j].y;
         distArr.z = positions[atomidx].z - positions[j].z;
-        distArr.x -= L * std::round(distArr.x / L);
-        distArr.y -= L * std::round(distArr.y / L);
-        distArr.z -= L * std::round(distArr.z / L);
+        distArr.x -= L * round(distArr.x / L);
+        distArr.y -= L * round(distArr.y / L);
+        distArr.z -= L * round(distArr.z / L);
         r2 = dot(distArr, distArr);
-        printf("%i on %i  %f-%f=%f, %f-%f=%f, %f-%f=%f  %f\n", atomidx, j, positions[atomidx].x, positions[j].x, distArr.x,
-            positions[atomidx].y, positions[j].y, distArr.y, positions[atomidx].z, positions[j].z, distArr.z, r2);
+        //printf("%i on %i  %f-%f=%f, %f-%f=%f, %f-%f=%f  %f\n", atomidx, j, positions[atomidx].x, positions[j].x, distArr.x,
+            //positions[atomidx].y, positions[j].y, distArr.y, positions[atomidx].z, positions[j].z, distArr.z, r2);
         if (r2 < rCutoffSquared) {
             float s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
             float sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
@@ -166,8 +165,6 @@ void calcForcesPerAtom(float3 *positions, float3 *accelerations, float *netPoten
             atomicAdd(&accelerations[j].x, (-forceOverR * distArr.x / MASS));
             atomicAdd(&accelerations[j].y, (-forceOverR * distArr.y / MASS));
             atomicAdd(&accelerations[j].z, (-forceOverR * distArr.z / MASS));
-            accelerations[atomidx] += (forceOverR * distArr / MASS);
-            accelerations[j] -= (forceOverR * distArr / MASS);
         }
     }
     netPotential[atomidx] = localPotential;
@@ -218,21 +215,23 @@ int main() {
     cudaMemcpy(devOldAccel, oldAccelerations, N * sizeof(float3), cudaMemcpyHostToDevice);
     thermostat<<<1, 1>>>(devVel); // Make velocities more accurate
 
-    float count = .01;
+    float count = .05;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
 
         if (i > count * numTimeSteps) { // Percent progress
             std::cout << count * 100 << "% \n";
-            count += .01;
+            count += .05;
         }
 
         cudaMemcpy(positions, devPos, N * sizeof(float3), cudaMemcpyDeviceToHost);
         writePositions(positions, positionFile, i);
 
+        /*
         cudaMemcpy(velocities, devVel, N * sizeof(float3), cudaMemcpyDeviceToHost);
         cudaMemcpy(accelerations, devAccel, N * sizeof(float3), cudaMemcpyDeviceToHost);
         cudaMemcpy(oldAccelerations, devOldAccel, N * sizeof(float3), cudaMemcpyDeviceToHost);
         writeToDebugFile(positions, velocities, accelerations, oldAccelerations, debug, i);
+        */
 
         firstStep<<<1, 1>>>(devPos, devVel, devAccel, devOldAccel, L, timeStep); // Update position and write currect accel to old accel
         cudaDeviceSynchronize();
@@ -249,7 +248,6 @@ int main() {
             result += netPotential[j];
         }
         cudaFree(netPotential);
-        exit(1);
 
         float *totalVelSquared;
         cudaMallocManaged(&totalVelSquared, N * sizeof(float));

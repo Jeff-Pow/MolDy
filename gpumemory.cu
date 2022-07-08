@@ -19,10 +19,10 @@ Device: GPU
 const float Kb = 1.38064582e-23; // J / K
 const float Na = 6.022e23; // Atoms per mole
 
-const int numTimeSteps = 50; // Parameters to change for simulation
+const int numTimeSteps = 500; // Parameters to change for simulation
 const float dt_star= .001;
 
-const int N = 32; // Number of atoms in simulation
+const int N = 256; // Number of atoms in simulation
 const float SIGMA = 3.405; // Angstroms
 const float EPSILON = 1.6540e-21; // Joules
 const float EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -163,8 +163,8 @@ void calcForcesPerAtom(float3 *positions, float3 *accelerations, int atomidx, fl
         distArr[1] -= L * std::round(distArr[1] / L);
         distArr[2] -= L * std::round(distArr[2] / L);
         r2 = distArr[0] * distArr[0] + distArr[1] * distArr[1] + distArr[2] * distArr[2]; // Dot product b/t atoms
-        printf("%i on %i  %f-%f=%f, %f-%f=%f, %f-%f=%f  %f\n", atomidx, j, positions[atomidx].x, positions[j].x, distArr[0],
-            positions[atomidx].y, positions[j].y, distArr[1], positions[atomidx].z, positions[j].z, distArr[2], r2);
+        //printf("%i on %i  %f-%f=%f, %f-%f=%f, %f-%f=%f  %f\n", atomidx, j, positions[atomidx].x, positions[j].x, distArr[0],
+            //positions[atomidx].y, positions[j].y, distArr[1], positions[atomidx].z, positions[j].z, distArr[2], r2);
         if (r2 < rCutoffSquared) {
             float s2or2 = SIGMA * SIGMA / r2; // Sigma squared over r squared
             float sor6 = s2or2 * s2or2 * s2or2; // Sigma over r to the sixth
@@ -236,12 +236,12 @@ int main() {
     cudaMemcpy(devOldAccel, oldAccelerations, N * sizeof(float3), cudaMemcpyHostToDevice);
     thermostat<<<1, 1>>>(devVel); // Make velocities more accurate
 
-    float count = .01;
+    float count = .05;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
 
         if (i > count * numTimeSteps) { // Percent progress
             std::cout << count * 100 << "% \n";
-            count += .01;
+            count += .05;
         }
 
         cudaMemcpy(positions, devPos, N * sizeof(float3), cudaMemcpyDeviceToHost);
@@ -277,7 +277,6 @@ int main() {
             vel += totalVelSquared[j];
         }
         cudaFree(totalVelSquared);
-        exit(1);
 
         if (i < numTimeSteps / 2 && i % 5 == 0) { // Apply velocity modifications for first half of sample
             thermostat<<<1, 1>>>(devVel);
