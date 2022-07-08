@@ -8,7 +8,6 @@ Device: GPU
 */
 
 #include <cuda.h>
-#include <cuda/atomic>
 
 #include <iostream>
 #include <sstream>
@@ -16,9 +15,6 @@ Device: GPU
 #include <random>
 #include <fstream>
 #include <array>
-
-const int numThreadsPerBlock = 1024;
-const int numBlocks = 256;
 
 const float Kb = 1.38064582e-23; // J / K
 const float Na = 6.022e23; // Atoms per mole
@@ -30,6 +26,9 @@ const int N = 500; // Number of atoms in simulation
 const float SIGMA = 3.405; // Angstroms
 const float EPSILON = 1.6540e-21; // Joules
 const float EPS_STAR = EPSILON / Kb; // ~ 119.8 K
+
+const int numThreadsPerBlock = 1024;
+const int numBlocks = ceil(N / numThreadsPerBlock);
 
 const float rhostar = .45; // Dimensionless density of gas
 const float rho = rhostar / std::pow(SIGMA, 3); // Density of gas
@@ -156,7 +155,7 @@ void thirdStep(float3 *velocities, float3 *accelerations, float3 *oldAcceleratio
 __device__
 void calcForcesPerAtom(float3 *positions, float3 *accelerations, float *netPotential, float L) {
     int atomidx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (atomidx >= N) return;
+    if (atomidx >= N - 1) return;
     float distArr[3]; // Record distance between atoms
     float localPotential = 0;
     float r2;
@@ -177,13 +176,12 @@ void calcForcesPerAtom(float3 *positions, float3 *accelerations, float *netPoten
 
             float forceOverR = 24 * EPS_STAR / r2 * (2 * sor12 - sor6);
             localPotential += 4 * EPS_STAR * (sor12 - sor6);
-            atomicAdd()
-            accelerations[atomidx].x += (forceOverR * distArr[0] / MASS);
-            accelerations[atomidx].y += (forceOverR * distArr[1] / MASS);
-            accelerations[atomidx].z += (forceOverR * distArr[2] / MASS);
-            accelerations[j].x -= (forceOverR * distArr[0] / MASS);
-            accelerations[j].y -= (forceOverR * distArr[1] / MASS);
-            accelerations[j].z -= (forceOverR * distArr[2] / MASS);
+            atomicAdd(&accelerations[atomidx].x, (forceOverR * distArr[0] / MASS));
+            atomicAdd(&accelerations[atomidx].y, (forceOverR * distArr[1] / MASS));
+            atomicAdd(&accelerations[atomidx].z, (forceOverR * distArr[2] / MASS));
+            atomicAdd(&accelerations[j].x, (-forceOverR * distArr[0] / MASS));
+            atomicAdd(&accelerations[j].y, (-forceOverR * distArr[1] / MASS));
+            atomicAdd(&accelerations[j].z, (-forceOverR * distArr[2] / MASS));
         }
     }
     netPotential[atomidx] = localPotential;
@@ -197,9 +195,9 @@ void calcForces(float3 *positions, float3 *accelerations, float *netPotential, f
 
 int main() {
     std::cout << "Cell length: " << L << std::endl;
-    std::ofstream positionFile("outgpumemory.xyz");
-    std::ofstream energyFile("energygpumemory.dat");
-    std::ofstream debug("debuggpumemory.dat");
+    std::ofstream positionFile("outthreadedgpu.xyz");
+    std::ofstream energyFile("energythreadedgpu.dat");
+    std::ofstream debug("debugthreadedgpu.dat");
 
     // Arrays to hold energy values at each step of the process
     std::vector<float> KE;
