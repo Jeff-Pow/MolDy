@@ -22,7 +22,7 @@ const float Na = 6.022e23; // Atoms per mole
 const int numTimeSteps = 500; // Parameters to change for simulation
 const float dt_star= .001;
 
-const int N = 256; // Number of atoms in simulation
+const int N = 4000; // Number of atoms in simulation
 const float SIGMA = 3.405; // Angstroms
 const float EPSILON = 1.6540e-21; // Joules
 const float EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -247,10 +247,12 @@ int main() {
         cudaMemcpy(positions, devPos, N * sizeof(float3), cudaMemcpyDeviceToHost);
         writePositions(positions, positionFile, i);
 
+        /*
         cudaMemcpy(velocities, devVel, N * sizeof(float3), cudaMemcpyDeviceToHost);
         cudaMemcpy(accelerations, devAccel, N * sizeof(float3), cudaMemcpyDeviceToHost);
         cudaMemcpy(oldAccelerations, devOldAccel, N * sizeof(float3), cudaMemcpyDeviceToHost);
         writeToDebugFile(positions, velocities, accelerations, oldAccelerations, debug, i);
+        */
 
         firstStep<<<1, 1>>>(devPos, devVel, devAccel, devOldAccel, L, timeStep); // Update position and write currect accel to old accel
         cudaDeviceSynchronize();

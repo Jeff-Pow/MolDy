@@ -23,13 +23,13 @@ const float Na = 6.022e23; // Atoms per mole
 const int numTimeSteps = 500; // Parameters to change for simulation
 const float dt_star= .001;
 
-const int N = 256; // Number of atoms in simulation
+const int N = 4000; // Number of atoms in simulation
 const float SIGMA = 3.405; // Angstroms
 const float EPSILON = 1.6540e-21; // Joules
 const float EPS_STAR = EPSILON / Kb; // ~ 119.8 K
 
-const int numThreadsPerBlock = 256;
-const int numBlocks = ceil(N / numThreadsPerBlock);
+const int numThreadsPerBlock = 1024;
+const int numBlocks = ceil(N / numThreadsPerBlock) + 1;
 
 const float rhostar = .45; // Dimensionless density of gas
 const float rho = rhostar / std::pow(SIGMA, 3); // Density of gas
@@ -241,7 +241,7 @@ int main() {
         for (int r = 0; r < N; r++) {
             netPotential[r] = 0;
         }
-        calcForces<<<1, numThreadsPerBlock>>>(devPos, devAccel, netPotential, L); // Update accelerations and return potential of system
+        calcForces<<<numBlocks, numThreadsPerBlock>>>(devPos, devAccel, netPotential, L); // Update accelerations and return potential of system
         cudaDeviceSynchronize();
         float result = 0;
         for (int j = 0; j < N; j++) {
