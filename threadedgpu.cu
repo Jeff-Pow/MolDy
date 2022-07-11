@@ -20,7 +20,7 @@ Device: GPU
 const float Kb = 1.38064582e-23; // J / K
 const float Na = 6.022e23; // Atoms per mole
 
-const int numTimeSteps = 500; // Parameters to change for simulation
+const int numTimeSteps = 5000; // Parameters to change for simulation
 const float dt_star= .001;
 
 const int N = 4000; // Number of atoms in simulation
@@ -42,6 +42,14 @@ const float TARGET_TEMP = tStar * EPS_STAR;
 const float MASS = 39.9 * 10 / Na / Kb; // Kelvin * ps^2 / A^2
 const float timeStep = dt_star * std::sqrt(MASS * SIGMA * SIGMA / EPS_STAR); // Convert time step to picoseconds
 
+__host__ 
+float calcVelocityDotProd(float3 *velocities) {
+    float num = 0;
+    for (int i = 0; i < N; i++) {
+        num += dot(velocities[i], velocities[i]);
+    }
+    return num;
+}
 
 __host__
 void faceCenteredCell(float3 *pos) {
@@ -90,45 +98,35 @@ void writeToDebugFile(float3 *positions, float3 *velocities, float3 *acceleratio
 }
 
 __global__ 
-void thermostat(float3 *velocities) {
-    float instantTemp = 0;
-    for (int i = 0; i < N; i++) { // Add kinetic energy of each molecule to the temperature
-        float num = velocities[i].x * velocities[i].x + velocities[i].y * velocities[i].y + velocities[i].z * velocities[i].z;
-        instantTemp += MASS * (num);
-    }
+void thermostat(float3 *velocities, float totalVelSquared) {
+    int k = blockIdx.x * numThreadsPerBlock + threadIdx.x;
+    if (k >= N) return;
+    float instantTemp = MASS * totalVelSquared;
     instantTemp /= (3 * N - 3);
     float tempScalar = std::sqrt(TARGET_TEMP / instantTemp);
-    for (int i = 0; i < N; i++) {
-        velocities[i].x *= tempScalar; // V = V * lambda
-        velocities[i].y *= tempScalar; // V = V * lambda
-        velocities[i].z *= tempScalar; // V = V * lambda
-    }
+    velocities[k] *= tempScalar; // V = V * lambda
 }
 
 __global__ 
 void firstStep(float3 *positions, float3 *velocities, float3 *accelerations, float3 *oldAccelerations, float L, float timeStep) {
-    for (int k = 0; k < N; ++k) { // Update positions
-        positions[k].x += velocities[k].x * timeStep + .5 * accelerations[k].x * timeStep * timeStep;
-        positions[k].y += velocities[k].y * timeStep + .5 * accelerations[k].y * timeStep * timeStep;
-        positions[k].z += velocities[k].z * timeStep + .5 * accelerations[k].z * timeStep * timeStep;
-        positions[k].x += -L * floor(positions[k].x / L); // Keep atom inside box
-        positions[k].y += -L * floor(positions[k].y / L); // Keep atom inside box
-        positions[k].z += -L * floor(positions[k].z / L); // Keep atom inside box
-        oldAccelerations[k].x = accelerations[k].x;
-        oldAccelerations[k].y = accelerations[k].y;
-        oldAccelerations[k].z = accelerations[k].z;
-        accelerations[k] = make_float3(0, 0, 0);
-    }
+    int k = blockIdx.x * numThreadsPerBlock + threadIdx.x;
+    if (k >= N) return;
+    positions[k].x += velocities[k].x * timeStep + .5 * accelerations[k].x * timeStep * timeStep;
+    positions[k].y += velocities[k].y * timeStep + .5 * accelerations[k].y * timeStep * timeStep;
+    positions[k].z += velocities[k].z * timeStep + .5 * accelerations[k].z * timeStep * timeStep;
+    positions[k].x += -L * floor(positions[k].x / L); // Keep atom inside box
+    positions[k].y += -L * floor(positions[k].y / L); // Keep atom inside box
+    positions[k].z += -L * floor(positions[k].z / L); // Keep atom inside box
+    oldAccelerations[k] = accelerations[k];
+    accelerations[k] = make_float3(0, 0, 0);
 }
 
 __global__ 
 void thirdStep(float3 *velocities, float3 *accelerations, float3 *oldAccelerations, float L, float *totalVelSquared, float timeStep) {
-    for (int k = 0; k < N; ++k) { // Update velocities
-        velocities[k].x += .5 * (accelerations[k].x + oldAccelerations[k].x) * timeStep;
-        velocities[k].y += .5 * (accelerations[k].y + oldAccelerations[k].y) * timeStep;
-        velocities[k].z += .5 * (accelerations[k].z + oldAccelerations[k].z) * timeStep;
-        totalVelSquared[k] = dot(velocities[k], velocities[k]);
-    }
+    int k = blockIdx.x * numThreadsPerBlock + threadIdx.x;
+    if (k >= N) return;
+    velocities[k] += .5 * (accelerations[k] + oldAccelerations[k]) * timeStep;
+    totalVelSquared[k] = dot(velocities[k], velocities[k]);
 }
 
 __device__
@@ -142,9 +140,7 @@ void calcForcesPerAtom(float3 *positions, float3 *accelerations, float *netPoten
 
     for (int j = atomidx + 1; j < N; j++) {
         // Apply boundary conditions
-        distArr.x = positions[atomidx].x - positions[j].x;
-        distArr.y = positions[atomidx].y - positions[j].y;
-        distArr.z = positions[atomidx].z - positions[j].z;
+        distArr = positions[atomidx] - positions[j];
         distArr.x -= L * round(distArr.x / L);
         distArr.y -= L * round(distArr.y / L);
         distArr.z -= L * round(distArr.z / L);
@@ -177,7 +173,10 @@ void calcForces(float3 *positions, float3 *accelerations, float *netPotential, f
 
 
 int main() {
-    std::cout << "Cell length: " << L << std::endl;
+    std::cout << "Simulation length: " << L << std::endl;
+    std::cout << "Num blocks: " << numBlocks << std::endl;
+    std::cout << "Threads per block: " << numThreadsPerBlock << std::endl;
+    std::cout << "Blocks * Threads per block: " << numBlocks * numThreadsPerBlock << std::endl;
     std::ofstream positionFile("outthreadedgpu.xyz");
     std::ofstream energyFile("energythreadedgpu.dat");
     std::ofstream debug("debugthreadedgpu.dat");
@@ -205,19 +204,19 @@ int main() {
         oldAccelerations[i] = make_float3(0, 0, 0);
     }
     float3 *devPos, *devVel, *devAccel, *devOldAccel;
-    cudaMallocManaged(&devPos, N * sizeof(float3));
-    cudaMallocManaged(&devVel, N * sizeof(float3));
-    cudaMallocManaged(&devAccel, N * sizeof(float3));
-    cudaMallocManaged(&devOldAccel, N * sizeof(float3));
+    cudaMalloc(&devPos, N * sizeof(float3));
+    cudaMalloc(&devVel, N * sizeof(float3));
+    cudaMalloc(&devAccel, N * sizeof(float3));
+    cudaMalloc(&devOldAccel, N * sizeof(float3));
     cudaMemcpy(devPos, positions, N * sizeof(float3), cudaMemcpyHostToDevice);
     cudaMemcpy(devVel, velocities, N * sizeof(float3), cudaMemcpyHostToDevice);
     cudaMemcpy(devAccel, accelerations, N * sizeof(float3), cudaMemcpyHostToDevice);
     cudaMemcpy(devOldAccel, oldAccelerations, N * sizeof(float3), cudaMemcpyHostToDevice);
-    thermostat<<<1, 1>>>(devVel); // Make velocities more accurate
+    thermostat<<<numBlocks, numThreadsPerBlock>>>(devVel, calcVelocityDotProd(velocities)); // Make velocities more accurate
+    cudaDeviceSynchronize();
 
     float count = .05;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
-
         if (i > count * numTimeSteps) { // Percent progress
             std::cout << count * 100 << "% \n";
             count += .05;
@@ -233,7 +232,7 @@ int main() {
         writeToDebugFile(positions, velocities, accelerations, oldAccelerations, debug, i);
         */
 
-        firstStep<<<1, 1>>>(devPos, devVel, devAccel, devOldAccel, L, timeStep); // Update position and write currect accel to old accel
+        firstStep<<<numBlocks, numThreadsPerBlock>>>(devPos, devVel, devAccel, devOldAccel, L, timeStep); // Update position and write currect accel to old accel
         cudaDeviceSynchronize();
 
         float *netPotential;
@@ -251,7 +250,7 @@ int main() {
 
         float *totalVelSquared;
         cudaMallocManaged(&totalVelSquared, N * sizeof(float));
-        thirdStep<<<1, 1>>>(devVel, devAccel, devOldAccel, L, totalVelSquared, timeStep); // Modify velocity a second time based off new forces
+        thirdStep<<<numBlocks, numThreadsPerBlock>>>(devVel, devAccel, devOldAccel, L, totalVelSquared, timeStep); // Modify velocity a second time based off new forces
         cudaDeviceSynchronize();
         float vel = 0;
         for (int j = 0; j < N; j++) {
@@ -260,7 +259,8 @@ int main() {
         cudaFree(totalVelSquared);
 
         if (i < numTimeSteps / 2 && i % 5 == 0) { // Apply velocity modifications for first half of sample
-            thermostat<<<1, 1>>>(devVel);
+            thermostat<<<numBlocks, numThreadsPerBlock>>>(devVel, vel);
+            cudaDeviceSynchronize();
         }
 
         if (i > numTimeSteps / 2) { // Record energies after half of time has passed
