@@ -104,25 +104,6 @@ void thermostat(float3 *velocities) {
     }
 }
 
-__host__
-void thermostatCPU(float3 *velocities) {
-    float instantTemp = 0;
-    //printf("CPU\n");
-    for (int i = 0; i < N; i++) { // Add kinetic energy of each molecule to the temperature
-        float num = velocities[i].x * velocities[i].x + velocities[i].y * velocities[i].y + velocities[i].z * velocities[i].z;
-        instantTemp += MASS * (num);
-        //printf("Atom: %i, dot product: %f\n", i, num);
-    }
-    instantTemp /= (3 * N - 3);
-    float tempScalar = std::sqrt(TARGET_TEMP / instantTemp);
-    //printf("Temp scalar: %f\n", tempScalar);
-    for (int i = 0; i < N; i++) {
-        velocities[i].x *= tempScalar; // V = V * lambda
-        velocities[i].y *= tempScalar; // V = V * lambda
-        velocities[i].z *= tempScalar; // V = V * lambda
-    }
-}
-
 __global__ 
 void firstStep(float3 *positions, float3 *velocities, float3 *accelerations, float3 *oldAccelerations, float L, float timeStep) {
     for (int k = 0; k < N; ++k) { // Update positions

@@ -171,12 +171,12 @@ int main() {
     double totalVelSquared;
     double netPotential;
 
-    double count = .01;
+    double count = .05;
     for (int i = 0; i < numTimeSteps; ++i) { // Main loop handles integration and printing to files
 
         if (i > count * numTimeSteps) { // Percent progress
             std::cout << count * 100 << "% \n";
-            count += .01;
+            count += .05;
         }
 
         writePositions(atomList, positionFile, i, debug);
