@@ -314,6 +314,17 @@ int main() {
         }
         sortAtoms<<<1, 1>>>(pointerArr, header, devPos, cellLocation, L);
         cudaDeviceSynchronize();
+        int test[N];
+        cudaError_t err = cudaMemcpy(test, cellLocation, cellsXYZ * sizeof(int), cudaMemcpyDeviceToHost);
+        if (err != cudaSuccess) {
+            std::cout << "bruh" << std::endl;
+            exit(20);
+        }
+        for (int j = 0; j < cellsXYZ; j++) {
+            std::cout << header[j] << std::endl;
+        }
+        exit(1);
+        cudaDeviceSynchronize();
         calcForcesPerAtom<<<numBlocks, numThreadsPerBlock>>>(devPos, devAccel, netPotential, L, pointerArr, header, cellLocation); // Update accelerations and return potential of system
         cudaDeviceSynchronize();
         float result = 0;
