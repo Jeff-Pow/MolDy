@@ -35,10 +35,10 @@ public:
 const double Kb = 1.38064582 * std::pow(10, -23); // J / K
 const double Na = 6.022 * std::pow(10, 23); // Atoms per mole
 
-const int numTimeSteps = 5000; // Parameters to change for simulation
+const int numTimeSteps = 25000; // Parameters to change for simulation
 const double dt_star= .001;
 
-const int N = 4000; // Number of atoms in simulation
+const int N = 812; // Number of atoms in simulation
 const double SIGMA = 3.405; // Angstroms
 const double EPSILON = 1.6540 * std::pow(10, -21); // Joules
 const double EPS_STAR = EPSILON / Kb; // ~ 119.8 K
@@ -92,10 +92,10 @@ int main() {
     std::cout << "Cells per direction: " << numCellsPerDirection << std::endl;
     std::cout << "Simulation length: " << L << std::endl;
     std::cout << "Cell length: " << cellLength << std::endl;
-    std::ofstream positionFile("out.xyz");
-    std::ofstream debug("md.dat");
+    std::ofstream positionFile("outmultithread.xyz");
+    std::ofstream debug("debugmultithread.dat");
     debug << "I \t J \t C \t C1 \t R2 \t forceOverR \n";
-    std::ofstream energyFile("Energy.dat");
+    std::ofstream energyFile("energymultithread.dat");
 
     // Arrays to hold energy values at each step of the process
     std::vector<double> KE;
