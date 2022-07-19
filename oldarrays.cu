@@ -315,13 +315,9 @@ int main() {
         sortAtoms<<<1, 1>>>(pointerArr, header, devPos, cellLocation, L);
         cudaDeviceSynchronize();
         int test[N];
-        cudaError_t err = cudaMemcpy(test, cellLocation, cellsXYZ * sizeof(int), cudaMemcpyDeviceToHost);
-        if (err != cudaSuccess) {
-            std::cout << "bruh" << std::endl;
-            exit(20);
-        }
-        for (int j = 0; j < cellsXYZ; j++) {
-            std::cout << header[j] << std::endl;
+        cudaMemcpy(test, cellLocation, N * sizeof(int), cudaMemcpyDeviceToHost);
+        for (int j = 0; j < N; j++) {
+            std::cout << "Atom number: " << j << " Cell number: " << test[j] << std::endl;
         }
         exit(1);
         cudaDeviceSynchronize();
