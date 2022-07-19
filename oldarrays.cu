@@ -157,7 +157,7 @@ void sortAtoms(int *pointerArr, int *header, float3 *positions, int *cellLocatio
         pointerArr[i] = header[c];
         // Current atom is highest # in cell, so its placed in header
         header[c] = i;
-        // Set cell location of the atom
+        // Record cell location of the atom
         cellLocation[i] = c;
     }
 }
